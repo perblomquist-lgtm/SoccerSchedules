@@ -601,6 +601,42 @@ class GotsportScraper:
             
             soup = BeautifulSoup(content, 'html.parser')
             
+            # Try to extract gender from the page content
+            gender = None
+            page_text = soup.get_text()
+            
+            # Look for gender indicators in headers, titles, or breadcrumbs
+            # Check common patterns: "Boys U10", "Girls U12", "Men's", "Women's", etc.
+            for elem in soup.find_all(['h1', 'h2', 'h3', 'h4', 'title', 'div', 'span']):
+                text = elem.get_text(strip=True)
+                # Check for explicit gender markers
+                if re.search(r'\bBoys?\b', text, re.IGNORECASE):
+                    gender = 'Boys'
+                    break
+                elif re.search(r'\bGirls?\b', text, re.IGNORECASE):
+                    gender = 'Girls'
+                    break
+                elif re.search(r'\bMen\'?s?\b', text, re.IGNORECASE):
+                    gender = 'Men'
+                    break
+                elif re.search(r'\bWomen\'?s?\b', text, re.IGNORECASE):
+                    gender = 'Women'
+                    break
+                elif re.search(r'\bMale\b', text, re.IGNORECASE):
+                    gender = 'Boys'
+                    break
+                elif re.search(r'\bFemale\b', text, re.IGNORECASE):
+                    gender = 'Girls'
+                    break
+            
+            # If gender found, update division name to include it if not already present
+            original_name = division['name']
+            if gender and gender.lower() not in original_name.lower():
+                # Add gender to the beginning if it's not already there
+                division['name'] = f"{original_name} ({gender})"
+                division['gender'] = gender
+                print(f"[SCRAPER] Updated division name to include gender: {division['name']}")
+            
             # Look for schedule table
             tables = soup.find_all('table')
             
