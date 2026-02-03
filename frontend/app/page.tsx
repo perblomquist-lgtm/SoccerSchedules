@@ -5,9 +5,11 @@ import { eventsApi, Event } from '@/lib/api';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { useState } from 'react';
+import AdminModal from '@/components/AdminModal';
 
 export default function Home() {
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [showAdminModal, setShowAdminModal] = useState(false);
   
   const { data: events, isLoading, error } = useQuery({
     queryKey: ['events'],
@@ -46,6 +48,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Admin Modal */}
+      <AdminModal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} />
+      
       {/* Top Navigation Bar */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -55,6 +60,12 @@ export default function Home() {
                 Tournament Schedules
               </h1>
             </div>
+            <button
+              onClick={() => setShowAdminModal(true)}
+              className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium"
+            >
+              Admin
+            </button>
           </div>
         </div>
       </header>

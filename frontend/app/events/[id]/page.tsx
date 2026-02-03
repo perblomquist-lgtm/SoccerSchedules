@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { schedulesApi, Game } from '@/lib/api';
 import { useState, use, useEffect } from 'react';
+import AdminModal from '@/components/AdminModal';
 
 type FilterType = 'all' | 'division' | 'team' | 'location' | 'favorites' | 'current';
 
@@ -16,6 +17,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [favoriteTeams, setFavoriteTeams] = useState<string[]>([]);
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
 
   // Load favorite teams from localStorage on mount
   useEffect(() => {
@@ -199,6 +201,9 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Admin Modal */}
+      <AdminModal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} />
+      
       {/* Top Navigation Bar */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -228,6 +233,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                 </div>
               )}
             </div>
+            
+            {/* Right side - Admin button */}
+            <button
+              onClick={() => setShowAdminModal(true)}
+              className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium"
+            >
+              Admin
+            </button>
           </div>
         </div>
       </header>
