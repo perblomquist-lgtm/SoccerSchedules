@@ -1,0 +1,757 @@
+"""Gotsport scraper using Playwright for headless browser automation"""
+import asyncio
+import json
+import re
+from datetime import datetime
+from typing import Dict, List, Optional, Any
+from urllib.parse import urlparse, parse_qs
+
+from playwright.async_api import async_playwright, Browser, Page, Response
+from bs4 import BeautifulSoup
+import logging
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class GotsportScraper:
+    """Scraper for Gotsport tournament websites"""
+    
+    def __init__(self):
+        self.browser: Optional[Browser] = None
+        self.api_responses: Dict[str, Any] = {}
+        
+    async def __aenter__(self):
+        """Async context manager entry"""
+        await self.start()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        await self.stop()
+    
+    async def start(self):
+        """Start the browser instance"""
+        playwright = await async_playwright().start()
+        self.browser = await playwright.chromium.launch(
+            headless=True,
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage',
+            ]
+        )
+        logger.info("Playwright browser started")
+    
+    async def stop(self):
+        """Stop the browser instance"""
+        if self.browser:
+            await self.browser.close()
+            logger.info("Playwright browser stopped")
+    
+    def _extract_event_id_from_url(self, url: str) -> Optional[str]:
+        """Extract event ID from Gotsport URL"""
+        # Example: https://system.gotsport.com/org_event/events/39474
+        match = re.search(r'/events/(\d+)', url)
+        if match:
+            return match.group(1)
+        return None
+    
+    async def _handle_response(self, response: Response):
+        """Intercept and store API responses"""
+        url = response.url
+        
+        # Look for Gotsport-specific API endpoints (not cookies/ads)
+        # Focus on system.gotsport.com and gotss domains
+        if 'gotsport.com' in url or 'gotss' in url:
+            # Look for API-like patterns
+            if any(pattern in url for pattern in ['/api/', '/data/', '.json', 'schedule', 'event', 'division', 'game']):
+                print(f"[SCRAPER] Potential Gotsport API endpoint detected: {url}")
+                logger.info(f"Potential API endpoint detected: {url}")
+                try:
+                    if response.status == 200:
+                        content_type = response.headers.get('content-type', '')
+                        print(f"[SCRAPER] Response status 200, content-type: {content_type}")
+                        logger.info(f"Response status 200, content-type: {content_type}")
+                        if 'application/json' in content_type:
+                            data = await response.json()
+                            self.api_responses[url] = data
+                            print(f"[SCRAPER] Successfully intercepted and parsed JSON from: {url}")
+                            logger.info(f"Successfully intercepted and parsed JSON from: {url}")
+                            logger.debug(f"Data type: {type(data)}, keys/length: {list(data.keys()) if isinstance(data, dict) else len(data) if isinstance(data, list) else 'unknown'}")
+                        else:
+                            logger.debug(f"Skipping non-JSON response from: {url}")
+                    else:
+                        logger.debug(f"Non-200 status ({response.status}) from: {url}")
+                except Exception as e:
+                    logger.warning(f"Could not parse response from {url}: {e}")
+    
+    async def scrape_event(self, event_url: str, max_retries: int = 3) -> Dict[str, Any]:
+        """
+        Scrape event data from Gotsport with retry logic
+        
+        Args:
+            event_url: URL of the event to scrape
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            Dict containing event details, divisions, and schedule data
+        """
+        if not self.browser:
+            await self.start()
+        
+        event_id = self._extract_event_id_from_url(event_url)
+        if not event_id:
+            raise ValueError(f"Could not extract event ID from URL: {event_url}")
+        
+        print(f"[SCRAPER] Starting scrape of event {event_id} from {event_url}")
+        logger.info(f"Scraping event {event_id} from {event_url}")
+        
+        # Try multiple times with exponential backoff
+        for attempt in range(max_retries):
+            try:
+                result = await self._attempt_scrape(event_url, event_id)
+                print(f"[SCRAPER] Scrape completed: {len(result.get('schedules', []))} games, {len(result.get('divisions', []))} divisions")
+                return result
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 5  # 5, 10, 15 seconds
+                    print(f"[SCRAPER] Attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                    logger.warning(f"Scrape attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"[SCRAPER] All {max_retries} attempts failed for event {event_id}")
+                    logger.error(f"All {max_retries} scrape attempts failed for event {event_id}")
+                    raise
+    
+    async def _attempt_scrape(self, event_url: str, event_id: str) -> Dict[str, Any]:
+        """Single scrape attempt"""
+        # Clear previous API responses
+        self.api_responses = {}
+        
+        # Create new page with stealth settings
+        page = await self.browser.new_page()
+        
+        # Set realistic user agent and headers
+        await page.set_extra_http_headers({
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Referer': 'https://www.google.com/',
+        })
+        
+        # Set up response interception
+        page.on('response', self._handle_response)
+        
+        try:
+            logger.info(f"Loading page: {event_url}")
+            
+            # Navigate to the event page with longer timeout and domcontentloaded
+            # domcontentloaded is faster than networkidle and more reliable
+            await page.goto(
+                event_url,
+                wait_until='domcontentloaded',
+                timeout=90000  # 90 seconds
+            )
+            
+            logger.info("Page loaded, waiting for content...")
+            
+            # Wait for the page to settle
+            await asyncio.sleep(5)
+            
+            # Try to wait for specific content that indicates the page loaded
+            try:
+                await page.wait_for_selector('body', timeout=10000)
+                logger.info("Body element found")
+            except Exception as e:
+                logger.warning(f"Could not find body selector: {e}")
+            
+            # Extract divisions and their schedule URLs from the main event page
+            print("[SCRAPER] Extracting divisions from main event page...")
+            divisions_data = await self._extract_divisions_from_event_page(page, event_id, event_url)
+            print(f"[SCRAPER] Found {len(divisions_data)} divisions")
+            
+            # Extract event name from the page
+            event_name = None
+            print("[SCRAPER] Starting event name extraction...")
+            logger.info("Starting event name extraction...")
+            try:
+                # Wait a bit more to ensure the page is fully loaded
+                await asyncio.sleep(2)
+                
+                # Get page content
+                content = await page.content()
+                soup = BeautifulSoup(content, 'html.parser')
+                
+                # First try: Look for widget-title which has the full event name
+                widget_title = soup.find('div', class_='widget-title')
+                if widget_title:
+                    event_name = widget_title.get_text(strip=True)
+                    print(f"[SCRAPER] Found event name from widget-title: {event_name}")
+                    logger.info(f"Found event name from widget-title: {event_name}")
+                
+                # Second try: Look for navbar-brand-event
+                if not event_name:
+                    name_elem = soup.find('a', class_='navbar-brand-event')
+                    if name_elem:
+                        event_name = name_elem.get_text(strip=True)
+                        print(f"[SCRAPER] Found event name from navbar-brand-event: {event_name}")
+                        logger.info(f"Found event name from navbar-brand-event: {event_name}")
+                
+                # Third try: Look for navbar-brand spans
+                if not event_name:
+                    name_elem = soup.find('span', class_=lambda x: x and 'navbar-brand' in str(x))
+                    if name_elem:
+                        event_name = name_elem.get_text(strip=True)
+                        print(f"[SCRAPER] Found event name from navbar-brand span: {event_name}")
+                        logger.info(f"Found event name from navbar-brand span: {event_name}")
+                
+                # Fallback to page title
+                if not event_name:
+                    title = await page.title()
+                    if title and title != 'GotSport':
+                        event_name = title.replace(' - GotSport', '').strip()
+                        print(f"[SCRAPER] Event name from page title: {event_name}")
+                        logger.info(f"Event name from page title: {event_name}")
+                
+            except Exception as e:
+                print(f"[SCRAPER] Error extracting event name: {e}")
+                logger.error(f"Error extracting event name: {e}", exc_info=True)
+            
+            # Now scrape each division's schedule page
+            all_schedules = []
+            for division in divisions_data:
+                if division.get('schedule_url'):
+                    print(f"[SCRAPER] Scraping schedule for division: {division['name']}")
+                    try:
+                        schedule_games = await self._scrape_division_schedule(page, division['schedule_url'], division)
+                        print(f"[SCRAPER] Found {len(schedule_games)} games in {division['name']}")
+                        all_schedules.extend(schedule_games)
+                    except Exception as e:
+                        print(f"[SCRAPER] Error scraping division {division['name']}: {e}")
+                        logger.warning(f"Error scraping division {division['name']}: {e}")
+            
+            event_data = {
+                'event_id': event_id,
+                'event': {
+                    'gotsport_event_id': event_id,
+                    'url': event_url,
+                    'name': event_name or f"Event {event_id}"
+                },
+                'divisions': divisions_data,
+                'schedules': all_schedules,
+            }
+            
+            logger.info(f"Scrape successful: {len(all_schedules)} games found")
+            return event_data
+            
+        finally:
+            await page.close()
+    
+    async def _extract_from_api_responses(self, event_id: str) -> Dict[str, Any]:
+        """Extract data from intercepted API responses"""
+        result = {
+            'event_id': event_id,
+            'event': {},
+            'divisions': [],
+            'schedules': [],
+        }
+        
+        print(f"[SCRAPER] Processing {len(self.api_responses)} intercepted API responses")
+        logger.info(f"Processing {len(self.api_responses)} intercepted API responses")
+        
+        # Look through all intercepted responses for relevant data
+        for url, data in self.api_responses.items():
+            print(f"[SCRAPER] Processing API response from: {url}")
+            logger.info(f"Processing API response from: {url}")
+            logger.debug(f"Data type: {type(data)}")
+            
+            # Try to identify the type of data
+            if isinstance(data, dict):
+                logger.debug(f"Dict keys: {list(data.keys())[:20]}")  # Limit to first 20 keys
+                print(f"[SCRAPER] Dict with keys: {list(data.keys())[:10]}")
+                
+                # Event details
+                if 'name' in data and 'start_date' in data:
+                    logger.info("Found event data in response")
+                    result['event'] = self._normalize_event_data(data)
+                
+                # Schedule data - check multiple possible keys
+                schedule_keys = ['games', 'schedule', 'schedules', 'matches']
+                for key in schedule_keys:
+                    if key in data:
+                        games = data[key]
+                        print(f"[SCRAPER] Found {len(games) if isinstance(games, list) else 'unknown'} items under '{key}' key")
+                        logger.info(f"Found {len(games) if isinstance(games, list) else 'unknown'} items under '{key}' key")
+                        result['schedules'].extend(self._normalize_schedule_data(games))
+                
+                # Divisions
+                if 'divisions' in data:
+                    print(f"[SCRAPER] Found {len(data['divisions'])} divisions in response")
+                    logger.info(f"Found {len(data['divisions'])} divisions in response")
+                    result['divisions'].extend(self._normalize_divisions_data(data['divisions']))
+            
+            elif isinstance(data, list):
+                logger.debug(f"List with {len(data)} items")
+                print(f"[SCRAPER] List with {len(data)} items")
+                # Could be a list of games or divisions
+                if data and isinstance(data[0], dict):
+                    first_item_keys = list(data[0].keys())
+                    logger.debug(f"First item keys: {first_item_keys[:10]}")
+                    
+                    if 'game_number' in data[0] or 'home_team' in data[0] or 'homeTeam' in data[0]:
+                        print(f"[SCRAPER] Found list of {len(data)} games")
+                        logger.info(f"Found list of {len(data)} games")
+                        result['schedules'].extend(self._normalize_schedule_data(data))
+                    elif 'division_name' in data[0] or 'age_group' in data[0]:
+                        print(f"[SCRAPER] Found list of {len(data)} divisions")
+                        logger.info(f"Found list of {len(data)} divisions")
+                        result['divisions'].extend(self._normalize_divisions_data(data))
+        
+        print(f"[SCRAPER] API extraction complete: {len(result['schedules'])} games, {len(result['divisions'])} divisions")
+        logger.info(f"API extraction complete: {len(result['schedules'])} games, {len(result['divisions'])} divisions")
+        return result
+    
+    async def _extract_from_dom(self, page: Page, event_id: str, event_url: str) -> Dict[str, Any]:
+        """Extract data by parsing the DOM (fallback method)"""
+        logger.info("Starting DOM extraction")
+        
+        result = {
+            'event_id': event_id,
+            'event': {'gotsport_event_id': event_id, 'url': event_url},
+            'divisions': [],
+            'schedules': [],
+        }
+        
+        # Get page content
+        content = await page.content()
+        soup = BeautifulSoup(content, 'html.parser')
+        
+        # Try to extract event name
+        title_elem = soup.find('h1') or soup.find('title')
+        if title_elem:
+            result['event']['name'] = title_elem.get_text(strip=True)
+            logger.info(f"Found event name: {result['event']['name']}")
+        
+        # Look for embedded JSON data in script tags
+        script_tags = soup.find_all('script')
+        logger.info(f"Found {len(script_tags)} script tags")
+        
+        json_found = 0
+        for idx, script in enumerate(script_tags):
+            script_content = script.string
+            if not script_content:
+                continue
+                
+            # Check for relevant keywords
+            keywords = ['schedule', 'event', 'games', 'Game', 'Schedule', 'division']
+            if any(keyword in script_content for keyword in keywords):
+                logger.debug(f"Script tag {idx} contains relevant keywords")
+                
+                # Try multiple JSON extraction patterns
+                patterns = [
+                    r'(?:var|const|let)\s+\w+\s*=\s*(\{[^;]+\});',  # Variable assignment
+                    r'(?:var|const|let)\s+\w+\s*=\s*(\[[^\]]+\]);',  # Array assignment
+                    r'window\.\w+\s*=\s*(\{[^;]+\});',  # Window property
+                    r'window\.\w+\s*=\s*(\[[^\]]+\]);',  # Window array
+                ]
+                
+                for pattern in patterns:
+                    json_matches = re.findall(pattern, script_content, re.DOTALL)
+                    for json_str in json_matches:
+                        try:
+                            data = json.loads(json_str)
+                            json_found += 1
+                            logger.debug(f"Parsed JSON object from script, type: {type(data)}")
+                            
+                            if isinstance(data, dict):
+                                logger.debug(f"JSON keys: {list(data.keys())[:10]}")
+                                if 'games' in data or 'schedule' in data:
+                                    games = data.get('games') or data.get('schedule', [])
+                                    logger.info(f"Found {len(games)} games in script JSON")
+                                    result['schedules'].extend(self._normalize_schedule_data(games))
+                                if 'divisions' in data:
+                                    logger.info(f"Found {len(data['divisions'])} divisions in script JSON")
+                                    result['divisions'].extend(self._normalize_divisions_data(data['divisions']))
+                            elif isinstance(data, list) and data:
+                                logger.debug(f"JSON list with {len(data)} items")
+                                if isinstance(data[0], dict):
+                                    first_keys = list(data[0].keys())[:10]
+                                    logger.debug(f"First item keys: {first_keys}")
+                        except json.JSONDecodeError:
+                            continue
+                        except Exception as e:
+                            logger.debug(f"Error parsing JSON: {e}")
+        
+        logger.info(f"Parsed {json_found} JSON objects from script tags")
+        
+        # Try to scrape schedule table if present
+        tables = soup.find_all('table')
+        logger.info(f"Found {len(tables)} tables on page")
+        
+        for idx, table in enumerate(tables):
+            # Check if table looks like a schedule
+            table_classes = ' '.join(table.get('class', [])).lower()
+            table_id = (table.get('id') or '').lower()
+            
+            if any(keyword in table_classes or keyword in table_id 
+                   for keyword in ['schedule', 'game', 'match']):
+                logger.info(f"Table {idx} appears to be a schedule table")
+                table_games = self._scrape_schedule_table(table)
+                if table_games:
+                    logger.info(f"Extracted {len(table_games)} games from table")
+                    result['schedules'].extend(table_games)
+        
+        # Try to find division links/tabs
+        division_elements = soup.find_all(['a', 'button', 'div'], 
+                                         class_=re.compile(r'division|bracket|pool', re.I))
+        logger.info(f"Found {len(division_elements)} potential division elements")
+        
+        for elem in division_elements:
+            div_name = elem.get_text(strip=True)
+            if div_name and len(div_name) < 100:  # Reasonable division name length
+                result['divisions'].append({
+                    'name': div_name,
+                    'gotsport_division_id': None,
+                })
+        
+        logger.info(f"DOM extraction complete: {len(result['schedules'])} games, {len(result['divisions'])} divisions")
+        return result
+    
+    def _scrape_schedule_table(self, table) -> List[Dict[str, Any]]:
+        """Scrape schedule data from an HTML table"""
+        games = []
+        rows = table.find_all('tr')[1:]  # Skip header row
+        
+        for row in rows:
+            cells = row.find_all(['td', 'th'])
+            if len(cells) >= 4:  # Minimum columns for a valid game row
+                game = {}
+                
+                # This is a generic parser - actual structure may vary
+                # Typically: Date, Time, Field, Division, Home, Away, Score
+                for i, cell in enumerate(cells):
+                    text = cell.get_text(strip=True)
+                    if i == 0:
+                        game['game_date'] = text
+                    elif i == 1:
+                        game['game_time'] = text
+                    elif 'field' in cell.get('class', [''])[0].lower():
+                        game['field_name'] = text
+                    elif 'home' in cell.get('class', [''])[0].lower():
+                        game['home_team_name'] = text
+                    elif 'away' in cell.get('class', [''])[0].lower():
+                        game['away_team_name'] = text
+                
+                if game:
+                    games.append(game)
+        
+        return games
+    
+    def _normalize_event_data(self, data: Dict) -> Dict[str, Any]:
+        """Normalize event data to standard format"""
+        return {
+            'gotsport_event_id': str(data.get('event_id') or data.get('id', '')),
+            'name': data.get('name', ''),
+            'location': data.get('location') or data.get('city'),
+            'start_date': self._parse_date(data.get('start_date')),
+            'end_date': self._parse_date(data.get('end_date')),
+            'url': data.get('url', ''),
+        }
+    
+    def _normalize_divisions_data(self, divisions: List[Dict]) -> List[Dict[str, Any]]:
+        """Normalize division data to standard format"""
+        result = []
+        for div in divisions:
+            if isinstance(div, dict):
+                result.append({
+                    'gotsport_division_id': str(div.get('division_id') or div.get('id', '')),
+                    'name': div.get('name') or div.get('division_name', ''),
+                    'age_group': div.get('age_group'),
+                    'gender': div.get('gender'),
+                })
+        return result
+    
+    def _normalize_schedule_data(self, games: List[Dict]) -> List[Dict[str, Any]]:
+        """Normalize schedule/game data to standard format"""
+        result = []
+        for game in games:
+            if isinstance(game, dict):
+                normalized = {
+                    'gotsport_game_id': str(game.get('game_id') or game.get('id', '')),
+                    'game_number': game.get('game_number'),
+                    'division_name': game.get('division_name') or game.get('division'),
+                    'home_team_name': game.get('home_team') or game.get('home'),
+                    'away_team_name': game.get('away_team') or game.get('away'),
+                    'game_date': self._parse_date(game.get('date') or game.get('game_date')),
+                    'game_time': game.get('time') or game.get('game_time'),
+                    'field_name': game.get('field') or game.get('field_name'),
+                    'field_location': game.get('field_location') or game.get('location'),
+                    'home_score': game.get('home_score'),
+                    'away_score': game.get('away_score'),
+                    'status': game.get('status', 'scheduled'),
+                }
+                result.append(normalized)
+        return result
+    
+    async def _extract_divisions_from_event_page(self, page: Page, event_id: str, event_url: str) -> List[Dict[str, Any]]:
+        """Extract division names and schedule URLs from the main event page"""
+        divisions_dict = {}  # Use dict to avoid duplicates, keyed by group_id
+        
+        # Get page content
+        content = await page.content()
+        soup = BeautifulSoup(content, 'html.parser')
+        
+        # Look for all elements that might contain schedule links
+        # Check both href attributes and onclick handlers
+        all_elements = soup.find_all(['a', 'button', 'div', 'span'])
+        
+        for elem in all_elements:
+            # Check href attribute
+            href = elem.get('href', '')
+            onclick = elem.get('onclick', '')
+            
+            # Look for schedule URLs in either href or onclick
+            url_to_check = href if href else onclick
+            
+            if 'schedules' in url_to_check and 'group=' in url_to_check:
+                # Extract group ID
+                group_match = re.search(r'group=(\d+)', url_to_check)
+                if group_match:
+                    group_id = group_match.group(1)
+                    
+                    # Skip if we already have this division
+                    if group_id in divisions_dict:
+                        continue
+                    
+                    # Build full URL
+                    if href and href.startswith('http'):
+                        schedule_url = href
+                    elif href and href.startswith('/'):
+                        schedule_url = f"https://system.gotsport.com{href}"
+                    else:
+                        schedule_url = f"https://system.gotsport.com/org_event/events/{event_id}/schedules?group={group_id}"
+                    
+                    # Try to find division name from parent table/row structure
+                    text = None
+                    
+                    # Look for parent tr (table row)
+                    current = elem
+                    for _ in range(5):  # Go up max 5 levels
+                        current = current.parent
+                        if not current:
+                            break
+                        
+                        # Check if this is a table row or div containing division info
+                        if current.name in ['tr', 'div', 'td']:
+                            # Get all text from this level
+                            row_text = current.get_text(separator='|', strip=True)
+                            # Split and look for division-like text
+                            parts = [p.strip() for p in row_text.split('|')]
+                            
+                            for part in parts:
+                                # Skip button text
+                                if part in ['Schedule', 'Standings', 'Bracket', 'View', '']:
+                                    continue
+                                # Look for patterns like U10B, Boys U12, Men's Open, etc.
+                                if (re.search(r'(U\d+|Boys|Girls|Men|Women|Open|Adult)', part, re.IGNORECASE) 
+                                    and len(part) < 50 
+                                    and part not in ['Schedule', 'Standings', 'Bracket']):
+                                    text = part
+                                    break
+                                # If it's reasonably short and doesn't look like navigation, use it
+                                elif len(part) < 30 and not any(skip in part.lower() for skip in ['click', 'view', 'more']):
+                                    text = part
+                                    break
+                            
+                            if text:
+                                break
+                    
+                    # Clean up extra whitespace
+                    if text:
+                        text = ' '.join(text.split())
+                    
+                    # If still no good name, use a default
+                    if not text:
+                        text = f"Division {group_id}"
+                    
+                    divisions_dict[group_id] = {
+                        'name': text,
+                        'gotsport_division_id': group_id,
+                        'schedule_url': schedule_url,
+                    }
+                    
+                    print(f"[SCRAPER] Found division: {text} (group={group_id})")
+        
+        return list(divisions_dict.values())
+    
+    async def _scrape_division_schedule(self, page: Page, schedule_url: str, division: Dict) -> List[Dict[str, Any]]:
+        """Scrape games from a division's schedule page"""
+        games = []
+        
+        try:
+            # Navigate to the schedule page
+            await page.goto(schedule_url, wait_until='domcontentloaded', timeout=60000)
+            await asyncio.sleep(3)  # Wait for dynamic content
+            
+            # Get page content
+            content = await page.content()
+            soup = BeautifulSoup(content, 'html.parser')
+            
+            # Look for schedule table
+            tables = soup.find_all('table')
+            
+            for table in tables:
+                # Check if this looks like a schedule table (not standings)
+                headers = [th.get_text(strip=True).lower() for th in table.find_all('th')]
+                
+                # Only process tables that are actual game schedules, not standings
+                # Schedule tables have "match #" or "game" and teams columns
+                if not any(keyword in ' '.join(headers) for keyword in ['match #', 'match', 'game #']):
+                    continue
+                    
+                # Skip standings tables (they have mp/w/l/d columns)
+                if any(keyword in ' '.join(headers) for keyword in ['mp', 'pts', 'gd', 'standings']):
+                    continue
+                
+                print(f"[SCRAPER] Found schedule table with headers: {headers[:7]}")
+                
+                # Process table rows
+                rows = table.find_all('tr')[1:]  # Skip header
+                print(f"[SCRAPER] Table has {len(rows)} data rows")
+                
+                for row_idx, row in enumerate(rows):
+                        cells = row.find_all(['td', 'th'])
+                        cell_texts = [cell.get_text(strip=True) for cell in cells]
+                        
+                        # Debug: print first few rows
+                        if row_idx < 3:
+                            print(f"[SCRAPER] Row {row_idx}: {cell_texts}")
+                        
+                        if len(cells) >= 3:  # Need at least time and teams
+                            game_data = {
+                                'division_name': division['name'],
+                                'gotsport_division_id': division['gotsport_division_id'],
+                            }
+                            
+                            # If we recognize the exact header structure, use positional parsing
+                            if 'match #' in headers or 'match' in headers:
+                                print(f"[SCRAPER] Using positional parsing for match table (row {row_idx})")
+                                # Gotsport typical format: ['match #', 'time', 'home team', 'results', 'away team', ...]
+                                time_idx = next((i for i, h in enumerate(headers) if 'time' in h), None)
+                                home_idx = next((i for i, h in enumerate(headers) if 'home' in h), None)
+                                away_idx = next((i for i, h in enumerate(headers) if 'away' in h), None)
+                                match_idx = next((i for i, h in enumerate(headers) if 'match' in h or 'game' in h), None)
+                                field_idx = next((i for i, h in enumerate(headers) if 'field' in h.lower() or 'location' in h.lower()), None)
+                                
+                                if row_idx < 2:
+                                    print(f"[SCRAPER] Indices - match:{match_idx}, time:{time_idx}, home:{home_idx}, away:{away_idx}, field:{field_idx}")
+                                
+                                if match_idx is not None and match_idx < len(cell_texts):
+                                    game_data['game_number'] = cell_texts[match_idx]
+                                
+                                if time_idx is not None and time_idx < len(cell_texts):
+                                    time_text = cell_texts[time_idx]
+                                    # Parse date/time - may be combined like "Feb 14, 20259:10 PM EST"
+                                    # Fix common typo where space is missing: "20259:10" -> "2025 9:10"
+                                    time_text = re.sub(r'(\d{4})(\d{1,2}:)', r'\1 \2', time_text)
+                                    
+                                    # Try to split date and time
+                                    date_match = re.search(r'([A-Za-z]+\s+\d{1,2},\s+\d{4})', time_text)
+                                    time_match = re.search(r'(\d{1,2}:\d{2}\s*[AP]M)', time_text, re.IGNORECASE)
+                                    
+                                    if date_match:
+                                        # Parse date string to datetime object
+                                        date_str = date_match.group(1)
+                                        try:
+                                            from datetime import datetime as dt
+                                            game_data['game_date'] = dt.strptime(date_str, '%b %d, %Y')
+                                        except ValueError:
+                                            # If parsing fails, store as string for now
+                                            game_data['game_date'] = date_str
+                                    if time_match:
+                                        game_data['game_time'] = time_match.group(1)
+                                    
+                                    # If we couldn't parse, store the whole thing
+                                    if not date_match and not time_match:
+                                        game_data['game_time'] = time_text
+                                
+                                if home_idx is not None and home_idx < len(cell_texts):
+                                    game_data['home_team_name'] = cell_texts[home_idx]
+                                
+                                if away_idx is not None and away_idx < len(cell_texts):
+                                    game_data['away_team_name'] = cell_texts[away_idx]
+                                
+                                if field_idx is not None and field_idx < len(cell_texts):
+                                    game_data['field_name'] = cell_texts[field_idx]
+                                else:
+                                    # Field might not have a header, look for it in remaining cells
+                                    for i, text in enumerate(cell_texts):
+                                        if i not in [match_idx, time_idx, home_idx, away_idx] and text:
+                                            # Check if it looks like a field name (contains "court", "field", or similar)
+                                            if any(word in text.lower() for word in ['court', 'field', 'pitch']):
+                                                game_data['field_name'] = text
+                                                break
+                            else:
+                                # Fallback: intelligent parsing based on content
+                                for i, cell_text in enumerate(cell_texts):
+                                    # Date patterns
+                                    if re.match(r'\d{1,2}/\d{1,2}', cell_text):
+                                        game_data['game_date'] = cell_text
+                                    # Time patterns
+                                    elif re.match(r'\d{1,2}:\d{2}', cell_text):
+                                        game_data['game_time'] = cell_text
+                                    # Field patterns
+                                    elif 'field' in cell_text.lower() or (cell_text.isdigit() and len(cell_text) <= 3):
+                                        if 'field_name' not in game_data:
+                                            game_data['field_name'] = cell_text
+                                    # Game number patterns
+                                    elif re.match(r'^[A-Z]?\d+$', cell_text) and len(cell_text) <= 4:
+                                        if 'game_number' not in game_data:
+                                            game_data['game_number'] = cell_text
+                                    # Teams - longer text that's not a common keyword
+                                    elif len(cell_text) > 3 and not any(x in cell_text.lower() for x in ['field', 'final', 'score', 'result', 'vs']):
+                                        if 'home_team_name' not in game_data:
+                                            game_data['home_team_name'] = cell_text
+                                        elif 'away_team_name' not in game_data:
+                                            game_data['away_team_name'] = cell_text
+                            
+                            # Only add if we have minimum required data (at least one team)
+                            if row_idx < 2:  # Debug first 2 rows
+                                print(f"[SCRAPER] Game data extracted: {game_data}")
+                            
+                            if game_data.get('home_team_name') or game_data.get('away_team_name'):
+                                games.append(game_data)
+                                if row_idx < 2:  # Debug
+                                    print(f"[SCRAPER] Game added: {game_data.get('game_number', 'N/A')} - {game_data.get('home_team_name', '?')} vs {game_data.get('away_team_name', '?')}")
+                            else:
+                                if row_idx < 2:  # Debug
+                                    print(f"[SCRAPER] Game skipped - no team names found")
+            
+        except Exception as e:
+            logger.error(f"Error scraping division schedule from {schedule_url}: {e}")
+            raise
+        
+        return games
+    
+    def _parse_date(self, date_str: Optional[str]) -> Optional[datetime]:
+        """Parse date string to datetime object"""
+        if not date_str:
+            return None
+        
+        try:
+            # Try ISO format first
+            if 'T' in str(date_str):
+                return datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
+            # Try common date formats
+            for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S']:
+                try:
+                    return datetime.strptime(str(date_str), fmt)
+                except ValueError:
+                    continue
+        except Exception as e:
+            logger.warning(f"Could not parse date: {date_str} - {e}")
+        
+        return None
