@@ -719,9 +719,10 @@ class GotsportScraper:
                                 away_idx = next((i for i, h in enumerate(headers) if 'away' in h), None)
                                 match_idx = next((i for i, h in enumerate(headers) if 'match' in h or 'game' in h), None)
                                 field_idx = next((i for i, h in enumerate(headers) if 'field' in h.lower() or 'location' in h.lower()), None)
+                                results_idx = next((i for i, h in enumerate(headers) if 'result' in h.lower() or 'score' in h.lower() or h.lower() in ['r', 'res']), None)
                                 
                                 if row_idx < 2:
-                                    print(f"[SCRAPER] Indices - match:{match_idx}, time:{time_idx}, home:{home_idx}, away:{away_idx}, field:{field_idx}")
+                                    print(f"[SCRAPER] Indices - match:{match_idx}, time:{time_idx}, home:{home_idx}, away:{away_idx}, field:{field_idx}, results:{results_idx}")
                                 
                                 if match_idx is not None and match_idx < len(cell_texts):
                                     game_data['game_number'] = cell_texts[match_idx]
@@ -763,11 +764,27 @@ class GotsportScraper:
                                 else:
                                     # Field might not have a header, look for it in remaining cells
                                     for i, text in enumerate(cell_texts):
-                                        if i not in [match_idx, time_idx, home_idx, away_idx] and text:
+                                        if i not in [match_idx, time_idx, home_idx, away_idx, results_idx] and text:
                                             # Check if it looks like a field name (contains "court", "field", or similar)
                                             if any(word in text.lower() for word in ['court', 'field', 'pitch']):
                                                 game_data['field_name'] = text
                                                 break
+                                
+                                # Parse results/scores if available
+                                if results_idx is not None and results_idx < len(cell_texts):
+                                    results_text = cell_texts[results_idx].strip()
+                                    # Common score patterns: "3-2", "3 - 2", "3:2", "3 to 2"
+                                    score_match = re.match(r'(\d+)\s*[-:to]\s*(\d+)', results_text, re.IGNORECASE)
+                                    if score_match:
+                                        game_data['home_score'] = int(score_match.group(1))
+                                        game_data['away_score'] = int(score_match.group(2))
+                                        game_data['status'] = 'completed'
+                                        if row_idx < 2:
+                                            print(f"[SCRAPER] Parsed score: {game_data['home_score']}-{game_data['away_score']}")
+                                    elif results_text and results_text not in ['', '-', 'vs', 'TBD']:
+                                        # Try to parse other formats
+                                        if row_idx < 2:
+                                            print(f"[SCRAPER] Unparsed results format: '{results_text}'")
                             else:
                                 # Fallback: intelligent parsing based on content
                                 for i, cell_text in enumerate(cell_texts):
