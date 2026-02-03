@@ -227,6 +227,7 @@ class ScrapeService:
             gotsport_game_id = game_data.get('gotsport_game_id')
             game = None
             
+            # First try to find by gotsport_game_id if available
             if gotsport_game_id:
                 result = await self.db.execute(
                     select(Game).where(
@@ -235,6 +236,25 @@ class ScrapeService:
                     )
                 )
                 game = result.scalar_one_or_none()
+            
+            # If not found by ID, try to find by unique attributes (division, teams, date, time)
+            if not game:
+                home_team = game_data.get('home_team_name')
+                away_team = game_data.get('away_team_name')
+                game_date = game_data.get('game_date')
+                game_time = game_data.get('game_time')
+                
+                if home_team and away_team and game_date and game_time:
+                    result = await self.db.execute(
+                        select(Game).where(
+                            Game.division_id == division.id,
+                            Game.home_team_name == home_team,
+                            Game.away_team_name == away_team,
+                            Game.game_date == game_date,
+                            Game.game_time == game_time
+                        )
+                    )
+                    game = result.scalar_one_or_none()
             
             if game:
                 # Update existing game
