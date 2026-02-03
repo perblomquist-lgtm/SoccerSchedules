@@ -97,6 +97,7 @@ class ScrapeService:
                 await self.db.refresh(event)
                 
                 logger.info(f"Successfully scraped event {event_id}: {stats}")
+                logger.info(f"Committed scrape data to database: {stats['total']} games, {len(divisions_map)} divisions")
                 
                 return event, scrape_log
                 

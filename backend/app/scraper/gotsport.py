@@ -592,8 +592,18 @@ class GotsportScraper:
         games = []
         
         try:
-            # Navigate to the schedule page
-            await page.goto(schedule_url, wait_until='domcontentloaded', timeout=60000)
+            # Navigate to the schedule page with retries
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    await page.goto(schedule_url, wait_until='domcontentloaded', timeout=120000)  # Increased to 120s
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Attempt {attempt + 1} failed for {schedule_url}, retrying...")
+                        await asyncio.sleep(5)  # Wait before retry
+                    else:
+                        raise
             await asyncio.sleep(3)  # Wait for dynamic content
             
             # Get page content
