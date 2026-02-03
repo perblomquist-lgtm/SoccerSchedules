@@ -8,9 +8,10 @@ import { format } from 'date-fns';
 interface AdminModalProps {
   isOpen: boolean;
   onClose: () => void;
+  currentEventId?: number;
 }
 
-export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
+export default function AdminModal({ isOpen, onClose, currentEventId }: AdminModalProps) {
   const [newEventId, setNewEventId] = useState('');
   const [newEventName, setNewEventName] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -29,10 +30,26 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
 
   const deleteEventMutation = useMutation({
     mutationFn: (eventId: number) => eventsApi.delete(eventId),
-    onSuccess: () => {
+    onSuccess: (_, deletedEventId) => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
-      setSuccess('Event deleted successfully');
-      setTimeout(() => setSuccess(''), 3000);
+      queryClient.invalidateQueries({ queryKey: ['schedule', deletedEventId] });
+      
+      // If we deleted the currently viewed event, redirect
+      if (currentEventId === deletedEventId) {
+        // Get remaining events after this one is removed
+        const remainingEvents = events?.filter(e => e.id !== deletedEventId) || [];
+        
+        if (remainingEvents.length > 0) {
+          // Redirect to the first available event
+          window.location.href = `/events/${remainingEvents[0].id}`;
+        } else {
+          // No events left, go to home page
+          window.location.href = '/';
+        }
+      } else {
+        setSuccess('Event deleted successfully');
+        setTimeout(() => setSuccess(''), 3000);
+      }
     },
     onError: (error: any) => {
       setError(error.response?.data?.detail || 'Failed to delete event');

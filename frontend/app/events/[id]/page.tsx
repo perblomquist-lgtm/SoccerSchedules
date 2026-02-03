@@ -211,7 +211,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Admin Modal */}
-      <AdminModal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} />
+      <AdminModal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} currentEventId={eventId} />
       
       {/* Top Navigation Bar */}
       <header className="bg-white border-b border-gray-200">
