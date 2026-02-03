@@ -69,13 +69,13 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
   // Extract unique teams from all games
   const allTeams = schedule ? Array.from(new Set([
-    ...schedule.games.map(g => g.home_team_name).filter(Boolean),
-    ...schedule.games.map(g => g.away_team_name).filter(Boolean)
+    ...schedule.games.map(g => g.home_team_name).filter((name): name is string => Boolean(name)),
+    ...schedule.games.map(g => g.away_team_name).filter((name): name is string => Boolean(name))
   ])).sort() : [];
 
   // Extract unique locations from all games
   const allLocations = schedule ? Array.from(new Set(
-    schedule.games.map(g => g.field_name).filter(Boolean)
+    schedule.games.map(g => g.field_name).filter((name): name is string => Boolean(name))
   )).sort() : [];
 
   // Filter games by location when location filter is active and sort by date/time
