@@ -17,9 +17,17 @@ class Settings(BaseSettings):
     @field_validator('DATABASE_URL')
     @classmethod
     def convert_db_url(cls, v: str) -> str:
-        """Convert postgres:// to postgresql+asyncpg:// for SQLAlchemy async"""
+        """Convert postgres:// to postgresql+asyncpg:// and remove unsupported params"""
+        # Replace postgres:// with postgresql+asyncpg://
         if v.startswith("postgres://"):
-            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        
+        # Remove sslmode parameter (not supported by asyncpg)
+        if "?sslmode=" in v:
+            v = v.split("?sslmode=")[0]
+        if "&sslmode=" in v:
+            v = v.split("&sslmode=")[0]
+            
         return v
     
     # Redis
