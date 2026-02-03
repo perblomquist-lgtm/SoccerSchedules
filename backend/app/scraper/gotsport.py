@@ -154,7 +154,7 @@ class GotsportScraper:
             await page.goto(
                 event_url,
                 wait_until='domcontentloaded',
-                timeout=90000  # 90 seconds
+                timeout=180000  # 180 seconds (3 minutes) - some pages are very slow
             )
             
             logger.info("Page loaded, waiting for content...")
