@@ -8,6 +8,7 @@ from urllib.parse import urlparse, parse_qs
 
 from playwright.async_api import async_playwright, Browser, Page, Response
 from bs4 import BeautifulSoup
+import httpx
 import logging
 
 from app.core.config import settings
@@ -588,26 +589,16 @@ class GotsportScraper:
         return list(divisions_dict.values())
     
     async def _scrape_division_schedule(self, page: Page, schedule_url: str, division: Dict) -> List[Dict[str, Any]]:
-        """Scrape games from a division's schedule page"""
+        """Scrape games from a division's schedule page using fast HTTP requests"""
         games = []
         
         try:
-            # Navigate to the schedule page with faster timeout
-            try:
-                await page.goto(schedule_url, wait_until='domcontentloaded', timeout=90000)  # 90s timeout
-                await asyncio.sleep(2)  # Reduced wait time
-            except Exception as e:
-                logger.warning(f"Timeout loading {schedule_url}: {e}")
-                # Try one more time with even shorter timeout
-                try:
-                    await page.goto(schedule_url, wait_until='domcontentloaded', timeout=45000)  # 45s
-                    await asyncio.sleep(1)
-                except Exception as retry_error:
-                    logger.error(f"Failed after retry for {schedule_url}: {retry_error}")
-                    raise
+            # Use HTTP request instead of Playwright for 10-20x speed improvement
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(schedule_url)
+                response.raise_for_status()
+                content = response.text
             
-            # Get page content
-            content = await page.content()
             soup = BeautifulSoup(content, 'html.parser')
             
             # Look for schedule table
