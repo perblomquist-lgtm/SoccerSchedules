@@ -218,11 +218,11 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Left side - Tournament selector and viewing mode */}
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Tournament:</span>
+            <div className="flex items-center gap-3 sm:gap-6 flex-1 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 flex-1 min-w-0">
+                <span className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">Tournament:</span>
                 <select 
-                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white min-w-[200px]"
+                  className="px-2 sm:px-3 py-1.5 border border-gray-300 rounded-md text-xs sm:text-sm bg-white min-w-0 flex-1"
                   value={eventId}
                   onChange={(e) => window.location.href = `/events/${e.target.value}`}
                 >
@@ -236,7 +236,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                 </select>
               </div>
               {schedule.event.last_scraped_at && (
-                <div className="text-xs text-gray-500">
+                <div className="hidden lg:block text-xs text-gray-500 whitespace-nowrap">
                   Last Scraped: {new Date(schedule.event.last_scraped_at).toLocaleString('en-US', {
                     month: 'short',
                     day: 'numeric',
@@ -252,7 +252,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             {/* Right side - Admin button */}
             <button
               onClick={() => setShowAdminModal(true)}
-              className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium"
+              className="px-3 sm:px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm whitespace-nowrap ml-2"
             >
               Admin
             </button>
@@ -262,8 +262,8 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
       {/* Viewing Info */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-2 text-base text-gray-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+          <div className="flex items-center gap-2 text-sm sm:text-base text-gray-700">
             <span>Viewing: <span className="font-bold">{getViewingText()}</span></span>
             {filterType === 'team' && teamFilter && (
               <button
@@ -301,17 +301,17 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <main className="max-w-7xl mx-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-8">
         {/* Filter Bar */}
-        <div className="bg-white rounded-lg shadow mb-6 p-4">
-          <div className="flex items-center gap-4">
+        <div className="bg-white rounded-lg shadow mb-4 sm:mb-6 p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
             {/* Filter Type Dropdown */}
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-initial">
               <button
                 onClick={() => setShowFilterMenu(!showFilterMenu)}
-                className="flex items-center justify-between gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm bg-white min-w-[200px] hover:bg-gray-50"
+                className="w-full flex items-center justify-between gap-2 px-3 sm:px-4 py-2 border border-gray-300 rounded-md text-sm bg-white sm:min-w-[200px] hover:bg-gray-50"
               >
-                <span>{getFilterLabel()}</span>
+                <span className="truncate">{getFilterLabel()}</span>
                 <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -363,7 +363,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             {/* Division Selector (when filter type is division) */}
             {filterType === 'division' && (
               <select
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm bg-white min-w-[200px]"
+                className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-md text-sm bg-white"
                 value={selectedDivision || ''}
                 onChange={(e) => setSelectedDivision(e.target.value ? parseInt(e.target.value) : undefined)}
               >
@@ -379,7 +379,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             {/* Team Filter (when filter type is team) */}
             {filterType === 'team' && (
               <select
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm bg-white min-w-[200px]"
+                className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-md text-sm bg-white"
                 value={teamFilter}
                 onChange={(e) => setTeamFilter(e.target.value)}
               >
@@ -395,7 +395,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             {/* Location Filter (when filter type is location) */}
             {filterType === 'location' && (
               <select
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm bg-white min-w-[200px]"
+                className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-md text-sm bg-white"
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}
               >
@@ -410,8 +410,8 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           </div>
         </div>
 
-        {/* Games Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        {/* Games Table - Desktop */}
+        <div className="hidden md:block bg-white rounded-lg shadow overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -511,6 +511,97 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Games Cards - Mobile */}
+        <div className="md:hidden space-y-3">
+          {filteredGames.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
+              No matches found. Contact an admin to upload schedules.
+            </div>
+          ) : (
+            filteredGames.map((game) => (
+              <div key={game.id} className="bg-white rounded-lg shadow p-4">
+                {/* Time and Status */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm">
+                    <div className="font-semibold text-gray-900">
+                      {game.game_date ? new Date(game.game_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'TBD'}
+                    </div>
+                    <div className="text-gray-600">{game.game_time || 'TBD'}</div>
+                  </div>
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    game.status === 'completed' 
+                      ? 'bg-green-100 text-green-800' 
+                      : game.status === 'in_progress'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {game.status || 'scheduled'}
+                  </span>
+                </div>
+
+                {/* Teams and Score */}
+                <div className="space-y-2 mb-3">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => game.home_team_name && handleTeamClick(game.home_team_name)}
+                      className="text-blue-600 hover:text-blue-800 text-left font-medium flex-1 text-sm"
+                      disabled={!game.home_team_name}
+                    >
+                      {game.home_team_name || 'TBD'}
+                    </button>
+                    <span className="font-bold text-lg mx-2">
+                      {game.home_score !== null ? game.home_score : '-'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => game.away_team_name && handleTeamClick(game.away_team_name)}
+                      className="text-blue-600 hover:text-blue-800 text-left font-medium flex-1 text-sm"
+                      disabled={!game.away_team_name}
+                    >
+                      {game.away_team_name || 'TBD'}
+                    </button>
+                    <span className="font-bold text-lg mx-2">
+                      {game.away_score !== null ? game.away_score : '-'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Location and Division */}
+                <div className="border-t border-gray-200 pt-3 space-y-1 text-xs text-gray-600">
+                  {game.field_name && (
+                    <div className="flex items-start gap-1">
+                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <button
+                        onClick={() => game.field_name && handleLocationClick(game.field_name)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-left"
+                      >
+                        {game.field_name}
+                      </button>
+                    </div>
+                  )}
+                  {game.division_name && (
+                    <div className="flex items-start gap-1">
+                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                      <button
+                        onClick={() => game.division_id && handleDivisionClick(game.division_id)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-left"
+                      >
+                        {game.division_name}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </main>
 
