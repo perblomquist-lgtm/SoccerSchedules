@@ -101,9 +101,25 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     }
     
     // If dates are equal, sort by time
-    const timeA = a.game_time || '';
-    const timeB = b.game_time || '';
-    return timeA.localeCompare(timeB);
+    // Convert time strings like "8:00 AM" to comparable numbers
+    const parseTime = (timeStr: string | null) => {
+      if (!timeStr) return 0;
+      const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if (!match) return 0;
+      let hours = parseInt(match[1]);
+      const minutes = parseInt(match[2]);
+      const period = match[3].toUpperCase();
+      
+      // Convert to 24-hour format
+      if (period === 'PM' && hours !== 12) hours += 12;
+      if (period === 'AM' && hours === 12) hours = 0;
+      
+      return hours * 60 + minutes; // Return total minutes for comparison
+    };
+    
+    const timeA = parseTime(a.game_time);
+    const timeB = parseTime(b.game_time);
+    return timeA - timeB;
   });
 
   // Handle filter type change - reset all filters
