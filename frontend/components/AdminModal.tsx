@@ -57,6 +57,20 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
     },
   });
 
+  const reScrapeEventMutation = useMutation({
+    mutationFn: (eventId: number) => scrapingApi.trigger(eventId, true),
+    onSuccess: (_, eventId) => {
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule', eventId] });
+      setSuccess('Re-scrape started! This may take a few minutes.');
+      setTimeout(() => setSuccess(''), 5000);
+    },
+    onError: (error: any) => {
+      setError(error.response?.data?.detail || 'Failed to start re-scrape');
+      setTimeout(() => setError(''), 5000);
+    },
+  });
+
   const addEventMutation = useMutation({
     mutationFn: async (data: { gotsport_event_id: string; name: string }) => {
       const url = `https://system.gotsport.com/org_event/events/${data.gotsport_event_id}`;
@@ -85,6 +99,12 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
   const handleDeleteEvent = (event: Event) => {
     if (window.confirm(`Are you sure you want to delete "${event.name}"? This will remove all games and divisions for this event.`)) {
       deleteEventMutation.mutate(event.id);
+    }
+  };
+
+  const handleReScrapeEvent = (event: Event) => {
+    if (window.confirm(`Re-scrape "${event.name}"? This will update all games and divisions with the latest data from Gotsport.`)) {
+      reScrapeEventMutation.mutate(event.id);
     }
   };
 
@@ -236,13 +256,22 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleDeleteEvent(event)}
-                        disabled={deleteEventMutation.isPending}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleReScrapeEvent(event)}
+                          disabled={reScrapeEventMutation.isPending}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                          {reScrapeEventMutation.isPending ? 'Scraping...' : 'Re-Scrape'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEvent(event)}
+                          disabled={deleteEventMutation.isPending}
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
