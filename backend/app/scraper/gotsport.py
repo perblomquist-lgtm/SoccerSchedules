@@ -601,41 +601,78 @@ class GotsportScraper:
             
             soup = BeautifulSoup(content, 'html.parser')
             
-            # Try to extract gender from the page content
+            # Try to extract gender and age from the page content
             gender = None
-            page_text = soup.get_text()
+            age_group = None
             
-            # Look for gender indicators in headers, titles, or breadcrumbs
-            # Check common patterns: "Boys U10", "Girls U12", "Men's", "Women's", etc.
+            # Look for gender and age indicators in headers, titles, or breadcrumbs
+            # Check common patterns: "Boys U10", "Girls U12", "Men's", "Women's", "U13B", etc.
             for elem in soup.find_all(['h1', 'h2', 'h3', 'h4', 'title', 'div', 'span']):
                 text = elem.get_text(strip=True)
+                
+                # Extract age group patterns: U10, U12, U-10, Under 10, 2010, BU10, GU12, etc.
+                if not age_group:
+                    # Pattern 1: U10, U12, U-10, etc.
+                    age_match = re.search(r'\b[UBG]?-?(\d{1,2})\b', text, re.IGNORECASE)
+                    if age_match and 6 <= int(age_match.group(1)) <= 19:
+                        age_group = f"U{age_match.group(1)}"
+                    # Pattern 2: Under 10, Under 12, etc.
+                    elif re.search(r'\bUnder\s+(\d{1,2})\b', text, re.IGNORECASE):
+                        under_match = re.search(r'\bUnder\s+(\d{1,2})\b', text, re.IGNORECASE)
+                        if under_match and 6 <= int(under_match.group(1)) <= 19:
+                            age_group = f"U{under_match.group(1)}"
+                    # Pattern 3: Birth year like 2010, 2011 (convert to age)
+                    elif re.search(r'\b(20\d{2})\b', text):
+                        year_match = re.search(r'\b(20\d{2})\b', text)
+                        if year_match:
+                            birth_year = int(year_match.group(1))
+                            current_year = 2026  # Update this as needed
+                            age = current_year - birth_year
+                            if 6 <= age <= 19:
+                                age_group = f"U{age}"
+                
                 # Check for explicit gender markers
-                if re.search(r'\bBoys?\b', text, re.IGNORECASE):
-                    gender = 'Boys'
-                    break
-                elif re.search(r'\bGirls?\b', text, re.IGNORECASE):
-                    gender = 'Girls'
-                    break
-                elif re.search(r'\bMen\'?s?\b', text, re.IGNORECASE):
-                    gender = 'Men'
-                    break
-                elif re.search(r'\bWomen\'?s?\b', text, re.IGNORECASE):
-                    gender = 'Women'
-                    break
-                elif re.search(r'\bMale\b', text, re.IGNORECASE):
-                    gender = 'Boys'
-                    break
-                elif re.search(r'\bFemale\b', text, re.IGNORECASE):
-                    gender = 'Girls'
+                if not gender:
+                    if re.search(r'\bBoys?\b', text, re.IGNORECASE):
+                        gender = 'Boys'
+                    elif re.search(r'\bGirls?\b', text, re.IGNORECASE):
+                        gender = 'Girls'
+                    elif re.search(r'\bMen\'?s?\b', text, re.IGNORECASE):
+                        gender = 'Men'
+                    elif re.search(r'\bWomen\'?s?\b', text, re.IGNORECASE):
+                        gender = 'Women'
+                    elif re.search(r'\bMale\b', text, re.IGNORECASE):
+                        gender = 'Boys'
+                    elif re.search(r'\bFemale\b', text, re.IGNORECASE):
+                        gender = 'Girls'
+                
+                # If we found both, we can break early
+                if gender and age_group:
                     break
             
-            # If gender found, update division name to include it if not already present
+            # Update division name to include missing information
             original_name = division['name']
+            name_parts = []
+            
+            # Add age group if found and not in original name
+            if age_group and age_group.lower() not in original_name.lower():
+                name_parts.append(age_group)
+                division['age_group'] = age_group
+                print(f"[SCRAPER] Detected age group: {age_group}")
+            
+            # Add gender if found and not in original name
             if gender and gender.lower() not in original_name.lower():
-                # Add gender to the beginning if it's not already there
-                division['name'] = f"{original_name} ({gender})"
+                name_parts.append(gender)
                 division['gender'] = gender
-                print(f"[SCRAPER] Updated division name to include gender: {division['name']}")
+                print(f"[SCRAPER] Detected gender: {gender}")
+            
+            # Update name with detected information
+            if name_parts:
+                # If we have both age and gender, format as "U10 Boys - Original Name"
+                # If only one, format as "U10 - Original Name" or "Boys - Original Name"
+                prefix = ' '.join(name_parts)
+                division['name'] = f"{prefix} - {original_name}"
+                print(f"[SCRAPER] Updated division name: {division['name']}")
             
             # Look for schedule table
             tables = soup.find_all('table')
