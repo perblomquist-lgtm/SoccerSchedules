@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { schedulesApi, Game } from '@/lib/api';
+import { schedulesApi, eventsApi, Game } from '@/lib/api';
 import { useState, use, useEffect } from 'react';
 import AdminModal from '@/components/AdminModal';
 
@@ -18,6 +18,15 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const [favoriteTeams, setFavoriteTeams] = useState<string[]>([]);
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+
+  // Fetch all events for the dropdown
+  const { data: allEvents } = useQuery({
+    queryKey: ['events'],
+    queryFn: async () => {
+      const response = await eventsApi.getAll();
+      return response.data;
+    },
+  });
 
   // Load favorite teams from localStorage on mount
   useEffect(() => {
@@ -217,7 +226,13 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                   value={eventId}
                   onChange={(e) => window.location.href = `/events/${e.target.value}`}
                 >
-                  <option value={eventId}>{schedule.event.name}</option>
+                  {allEvents && allEvents.length > 0 ? (
+                    allEvents.map(event => (
+                      <option key={event.id} value={event.id}>{event.name}</option>
+                    ))
+                  ) : (
+                    <option value={eventId}>{schedule.event.name}</option>
+                  )}
                 </select>
               </div>
               {schedule.event.last_scraped_at && (
