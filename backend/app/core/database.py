@@ -3,12 +3,24 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from app.core.config import settings
+import ssl
 
-# Create async engine
+# SSL context for asyncpg - prefer connection but don't verify cert for internal Fly.io network
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
+# Create async engine with SSL support
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.ENVIRONMENT == "development",
     future=True,
+    connect_args={
+        "ssl": ssl_context,
+        "server_settings": {
+            "application_name": "soccerschedules_backend"
+        }
+    }
 )
 
 # Create async session factory

@@ -23,10 +23,12 @@ class Settings(BaseSettings):
             v = v.replace("postgres://", "postgresql+asyncpg://", 1)
         
         # Remove sslmode parameter (not supported by asyncpg)
+        # asyncpg uses different SSL params, we'll handle it via connection params
         if "?sslmode=" in v:
-            v = v.split("?sslmode=")[0]
+            v = v.split("?")[0]
         if "&sslmode=" in v:
-            v = v.split("&sslmode=")[0]
+            parts = v.split("&sslmode=")
+            v = parts[0]
             
         return v
     
