@@ -35,12 +35,8 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     
-    # CORS
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-    ]
+    # CORS - Allow all origins for now, can restrict later
+    CORS_ORIGINS: List[str] = ["*"]
     
     # Scraping
     SCRAPE_DELAY_MIN: int = 2  # Minimum seconds between requests
