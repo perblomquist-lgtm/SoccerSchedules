@@ -89,8 +89,80 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     schedule.games.map(g => g.field_name).filter((name): name is string => Boolean(name))
   )).sort() : [];
 
+  // Helper function to parse time strings like "8:00 AM" to comparable numbers
+  const parseTime = (timeStr: string | null) => {
+    if (!timeStr) return 0;
+    const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!match) return 0;
+    let hours = parseInt(match[1]);
+    const minutes = parseInt(match[2]);
+    const period = match[3].toUpperCase();
+    
+    // Convert to 24-hour format
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    
+    return hours * 60 + minutes; // Return total minutes for comparison
+  };
+
+  // Helper function to get current matches (games that have started but likely haven't finished)
+  const getCurrentMatches = (games: Game[]) => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Filter games that are today
+    const todayGames = games.filter(game => {
+      if (!game.game_date) return false;
+      const gameDate = new Date(game.game_date).toISOString().split('T')[0];
+      return gameDate === todayStr;
+    });
+
+    // Group games by field
+    const gamesByField = new Map<string, Game[]>();
+    todayGames.forEach(game => {
+      const field = game.field_name || 'Unknown Field';
+      if (!gamesByField.has(field)) {
+        gamesByField.set(field, []);
+      }
+      gamesByField.get(field)!.push(game);
+    });
+
+    // For each field, find the game with the last start time before current time
+    const currentGames: Game[] = [];
+    gamesByField.forEach((fieldGames, field) => {
+      // Sort games by start time
+      const sortedGames = fieldGames.sort((a, b) => {
+        const timeA = parseTime(a.game_time);
+        const timeB = parseTime(b.game_time);
+        return timeA - timeB;
+      });
+
+      // Find the last game that has started (start time <= current time)
+      let lastStartedGame: Game | null = null;
+      for (const game of sortedGames) {
+        const gameStartMinutes = parseTime(game.game_time);
+        if (gameStartMinutes <= currentMinutes) {
+          lastStartedGame = game;
+        } else {
+          break; // Since sorted, no need to check further
+        }
+      }
+
+      if (lastStartedGame) {
+        currentGames.push(lastStartedGame);
+      }
+    });
+
+    return currentGames;
+  };
+
   // Filter games by location when location filter is active and sort by date/time
   const filteredGames = (schedule?.games.filter(game => {
+    if (filterType === 'current') {
+      // For current matches, we'll filter separately
+      return true;
+    }
     if (filterType === 'location' && locationFilter) {
       return game.field_name === locationFilter;
     }
@@ -112,26 +184,13 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     }
     
     // If dates are equal, sort by time
-    // Convert time strings like "8:00 AM" to comparable numbers
-    const parseTime = (timeStr: string | null) => {
-      if (!timeStr) return 0;
-      const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
-      if (!match) return 0;
-      let hours = parseInt(match[1]);
-      const minutes = parseInt(match[2]);
-      const period = match[3].toUpperCase();
-      
-      // Convert to 24-hour format
-      if (period === 'PM' && hours !== 12) hours += 12;
-      if (period === 'AM' && hours === 12) hours = 0;
-      
-      return hours * 60 + minutes; // Return total minutes for comparison
-    };
-    
     const timeA = parseTime(a.game_time);
     const timeB = parseTime(b.game_time);
     return timeA - timeB;
   });
+
+  // Apply current matches filter if selected
+  const displayGames = filterType === 'current' ? getCurrentMatches(filteredGames) : filteredGames;
 
   // Handle filter type change - reset all filters
   const handleFilterTypeChange = (newFilterType: FilterType) => {
@@ -298,6 +357,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               </button>
             )}
           </div>
+          {filterType === 'current' && (
+            <div className="mt-2 text-xs sm:text-sm text-gray-600 flex items-center gap-2">
+              <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+              </svg>
+              <span>Showing the most recent game that has started on each field (games do not extend past midnight)</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -439,14 +506,16 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredGames.length === 0 ? (
+              {displayGames.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                    No matches found. Contact an admin to upload schedules.
+                    {filterType === 'current' 
+                      ? 'No current matches at this time.'
+                      : 'No matches found. Contact an admin to upload schedules.'}
                   </td>
                 </tr>
               ) : (
-                filteredGames.map((game) => (
+                displayGames.map((game) => (
                   <tr key={game.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div>{game.game_date ? new Date(game.game_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</div>
@@ -515,12 +584,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
 
         {/* Games Cards - Mobile */}
         <div className="md:hidden space-y-3">
-          {filteredGames.length === 0 ? (
+          {displayGames.length === 0 ? (
             <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
-              No matches found. Contact an admin to upload schedules.
+              {filterType === 'current' 
+                ? 'No current matches at this time.'
+                : 'No matches found. Contact an admin to upload schedules.'}
             </div>
           ) : (
-            filteredGames.map((game) => (
+            displayGames.map((game) => (
               <div key={game.id} className="bg-white rounded-lg shadow p-4">
                 {/* Time and Status */}
                 <div className="flex items-center justify-between mb-3">
