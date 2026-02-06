@@ -18,6 +18,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const [favoriteTeams, setFavoriteTeams] = useState<string[]>([]);
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [myClubName, setMyClubName] = useState('');
 
   // Fetch all events for the dropdown
   const { data: allEvents } = useQuery({
@@ -28,12 +29,31 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     },
   });
 
-  // Load favorite teams from localStorage on mount
+  // Load favorite teams and club name from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem('favoriteTeams');
     if (stored) {
       setFavoriteTeams(JSON.parse(stored));
     }
+    const storedClubName = localStorage.getItem('myClubName');
+    if (storedClubName) {
+      setMyClubName(storedClubName);
+    }
+  }, []);
+
+  // Listen for storage changes (when club name is updated in admin modal)
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const storedClubName = localStorage.getItem('myClubName');
+      setMyClubName(storedClubName || '');
+    };
+    window.addEventListener('storage', handleStorageChange);
+    // Also check when admin modal closes
+    const interval = setInterval(handleStorageChange, 500);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
   }, []);
 
   // Save favorite teams to localStorage whenever it changes
@@ -174,9 +194,9 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
              (game.away_team_name && favoriteTeams.includes(game.away_team_name));
     }
     if (filterType === 'myclub') {
-      const clubName = 'Reel Stream Media Group';
-      return (game.home_team_name && game.home_team_name.includes(clubName)) ||
-             (game.away_team_name && game.away_team_name.includes(clubName));
+      if (!myClubName) return false;
+      return (game.home_team_name && game.home_team_name.includes(myClubName)) ||
+             (game.away_team_name && game.away_team_name.includes(myClubName));
     }
     return true;
   }) || []).sort((a, b) => {
@@ -271,7 +291,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
       return teamFilter;
     }
     if (filterType === 'myclub') {
-      return 'Reel Stream Media Group';
+      return myClubName || 'My Club (not set)';
     }
     return 'All';
   };

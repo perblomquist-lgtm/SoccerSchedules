@@ -30,7 +30,16 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [viewingLogsForEvent, setViewingLogsForEvent] = useState<number | null>(null);
+  const [clubName, setClubName] = useState('');
   const queryClient = useQueryClient();
+
+  // Load club name from localStorage on mount
+  useState(() => {
+    const stored = localStorage.getItem('myClubName');
+    if (stored) {
+      setClubName(stored);
+    }
+  });
 
   const { data: events, isLoading } = useQuery({
     queryKey: ['events'],
@@ -150,6 +159,19 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
       gotsport_event_id: newEventId.trim(),
       name: newEventName.trim(),
     });
+  };
+
+  const handleSaveClubName = () => {
+    localStorage.setItem('myClubName', clubName.trim());
+    setSuccess('Club name saved successfully!');
+    setTimeout(() => setSuccess(''), 3000);
+  };
+
+  const handleClearClubName = () => {
+    setClubName('');
+    localStorage.removeItem('myClubName');
+    setSuccess('Club name cleared!');
+    setTimeout(() => setSuccess(''), 3000);
   };
 
   if (!isOpen) return null;
@@ -311,6 +333,40 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
               {success}
             </div>
           )}
+
+          {/* Club Settings Section */}
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">My Club Settings</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              Set your club name to quickly filter games for your teams using the "My Club" filter.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="text"
+                value={clubName}
+                onChange={(e) => setClubName(e.target.value)}
+                placeholder="e.g., Reel Stream Media Group"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveClubName}
+                  disabled={!clubName.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  Save
+                </button>
+                {clubName && (
+                  <button
+                    onClick={handleClearClubName}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Add Event Section */}
           <div className="mb-6">
