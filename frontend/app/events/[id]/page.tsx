@@ -583,7 +583,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         </div>
 
         {/* Games Cards - Mobile */}
-        <div className="md:hidden space-y-3">
+        <div className="md:hidden space-y-2">
           {displayGames.length === 0 ? (
             <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
               {filterType === 'current' 
@@ -592,10 +592,10 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             </div>
           ) : (
             displayGames.map((game) => (
-              <div key={game.id} className="bg-white rounded-lg shadow p-4">
+              <div key={game.id} className="bg-white rounded-lg shadow p-3">
                 {/* Time and Status */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs">
                     <div className="font-semibold text-gray-900">
                       {game.game_date ? new Date(game.game_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'TBD'}
                     </div>
@@ -613,7 +613,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                 </div>
 
                 {/* Teams and Score */}
-                <div className="space-y-2 mb-3">
+                <div className="space-y-1 mb-2">
                   <div className="flex items-center justify-between">
                     <button
                       onClick={() => game.home_team_name && handleTeamClick(game.home_team_name)}
@@ -622,7 +622,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                     >
                       {game.home_team_name || 'TBD'}
                     </button>
-                    <span className="font-bold text-lg mx-2">
+                    <span className="font-bold text-base mx-2">
                       {game.home_score !== null ? game.home_score : '-'}
                     </span>
                   </div>
@@ -634,14 +634,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                     >
                       {game.away_team_name || 'TBD'}
                     </button>
-                    <span className="font-bold text-lg mx-2">
+                    <span className="font-bold text-base mx-2">
                       {game.away_score !== null ? game.away_score : '-'}
                     </span>
                   </div>
                 </div>
 
                 {/* Location and Division */}
-                <div className="border-t border-gray-200 pt-3 space-y-1 text-xs text-gray-600">
+                <div className="border-t border-gray-200 pt-2 space-y-1 text-xs text-gray-600">
                   {game.field_name && (
                     <div className="flex items-start gap-1">
                       <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
