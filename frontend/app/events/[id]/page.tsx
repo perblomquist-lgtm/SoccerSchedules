@@ -593,15 +593,35 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           ) : (
             displayGames.map((game) => (
               <div key={game.id} className="bg-white rounded-lg shadow p-3">
-                {/* Time and Status */}
-                <div className="flex items-center justify-between mb-2">
+                {/* Top Row: Time, Field/Division, Status */}
+                <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="text-xs">
                     <div className="font-semibold text-gray-900">
                       {game.game_date ? new Date(game.game_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'TBD'}
                     </div>
                     <div className="text-gray-600">{game.game_time || 'TBD'}</div>
                   </div>
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                  
+                  <div className="flex-1 text-xs text-gray-600 space-y-0.5">
+                    {game.field_name && (
+                      <button
+                        onClick={() => game.field_name && handleLocationClick(game.field_name)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-left block truncate"
+                      >
+                        {game.field_name}
+                      </button>
+                    )}
+                    {game.division_name && (
+                      <button
+                        onClick={() => game.division_id && handleDivisionClick(game.division_id)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-left block truncate"
+                      >
+                        {game.division_name}
+                      </button>
+                    )}
+                  </div>
+                  
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${
                     game.status === 'completed' 
                       ? 'bg-green-100 text-green-800' 
                       : game.status === 'in_progress'
@@ -638,37 +658,6 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                       {game.away_score !== null ? game.away_score : '-'}
                     </span>
                   </div>
-                </div>
-
-                {/* Location and Division */}
-                <div className="border-t border-gray-200 pt-2 space-y-1 text-xs text-gray-600">
-                  {game.field_name && (
-                    <div className="flex items-start gap-1">
-                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <button
-                        onClick={() => game.field_name && handleLocationClick(game.field_name)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-left"
-                      >
-                        {game.field_name}
-                      </button>
-                    </div>
-                  )}
-                  {game.division_name && (
-                    <div className="flex items-start gap-1">
-                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
-                      <button
-                        onClick={() => game.division_id && handleDivisionClick(game.division_id)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline text-left"
-                      >
-                        {game.division_name}
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             ))
