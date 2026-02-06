@@ -5,7 +5,7 @@ import { schedulesApi, eventsApi, Game } from '@/lib/api';
 import { useState, use, useEffect } from 'react';
 import AdminModal from '@/components/AdminModal';
 
-type FilterType = 'all' | 'division' | 'team' | 'location' | 'favorites' | 'current';
+type FilterType = 'all' | 'division' | 'team' | 'location' | 'favorites' | 'current' | 'myclub';
 
 export default function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -173,6 +173,11 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
       return (game.home_team_name && favoriteTeams.includes(game.home_team_name)) ||
              (game.away_team_name && favoriteTeams.includes(game.away_team_name));
     }
+    if (filterType === 'myclub') {
+      const clubName = 'Reel Stream Media Group';
+      return (game.home_team_name && game.home_team_name.includes(clubName)) ||
+             (game.away_team_name && game.away_team_name.includes(clubName));
+    }
     return true;
   }) || []).sort((a, b) => {
     // First sort by date
@@ -249,6 +254,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
       case 'location': return 'Filter by Location';
       case 'favorites': return 'Show Favorites';
       case 'current': return 'Current Matches';
+      case 'myclub': return 'My Club';
       default: return 'Filter by Division';
     }
   };
@@ -263,6 +269,9 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     }
     if (filterType === 'team' && teamFilter) {
       return teamFilter;
+    }
+    if (filterType === 'myclub') {
+      return 'Reel Stream Media Group';
     }
     return 'All';
   };
@@ -416,6 +425,12 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
                   >
                     Show Favorites
+                  </button>
+                  <button
+                    onClick={() => handleFilterTypeChange('myclub')}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+                  >
+                    My Club
                   </button>
                   <button
                     onClick={() => handleFilterTypeChange('current')}
