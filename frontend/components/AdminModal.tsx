@@ -181,27 +181,27 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
     const event = events?.find(e => e.id === viewingLogsForEvent);
     
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Scrape Logs</h2>
-              {event && <p className="text-sm text-gray-600 mt-1">{event.name}</p>}
+          <div className="flex items-center justify-between p-3 sm:p-6 border-b border-gray-200">
+            <div className="min-w-0 flex-1 pr-2">
+              <h2 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">Scrape Logs</h2>
+              {event && <p className="text-xs sm:text-sm text-gray-600 mt-1 truncate">{event.name}</p>}
             </div>
             <button
               onClick={() => setViewingLogsForEvent(null)}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 p-1"
               aria-label="Close"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6">
             {logsLoading ? (
               <div className="text-center py-8 text-gray-500">Loading logs...</div>
             ) : !scrapeLogs || scrapeLogs.length === 0 ? (
@@ -209,11 +209,11 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
                 No scrape logs found. Logs will appear here after the first scrape.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {scrapeLogs.map((log) => (
                   <div
                     key={log.id}
-                    className={`p-4 border rounded-lg ${
+                    className={`p-3 sm:p-4 border rounded-lg ${
                       log.status === 'success'
                         ? 'bg-green-50 border-green-200'
                         : log.status === 'failed'
@@ -223,7 +223,7 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
                         : 'bg-gray-50 border-gray-200'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-4 mb-2">
+                    <div className="flex flex-col sm:flex-row items-start sm:justify-between gap-2 sm:gap-4 mb-2">
                       <div>
                         <span
                           className={`inline-block px-2 py-1 rounded text-xs font-semibold uppercase ${
@@ -239,7 +239,7 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
                           {log.status}
                         </span>
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">
                         {format(new Date(log.scrape_started_at), 'MMM d, yyyy h:mm:ss a')}
                       </div>
                     </div>
@@ -290,10 +290,10 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
           </div>
 
           {/* Footer */}
-          <div className="p-6 border-t border-gray-200 bg-gray-50">
+          <div className="p-3 sm:p-6 border-t border-gray-200 bg-gray-50">
             <button
               onClick={() => setViewingLogsForEvent(null)}
-              className="w-full sm:w-auto px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
+              className="w-full px-4 sm:px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm sm:text-base"
             >
               Back to Admin Panel
             </button>
@@ -304,62 +304,62 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Admin Panel</h2>
+        <div className="flex items-center justify-between p-3 sm:p-6 border-b border-gray-200">
+          <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Admin Panel</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 transition-colors p-1"
             aria-label="Close"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6">
           {/* Status Messages */}
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+            <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               {error}
             </div>
           )}
           {success && (
-            <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+            <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
               {success}
             </div>
           )}
 
           {/* Club Settings Section */}
-          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">My Club Settings</h3>
-            <p className="text-sm text-gray-600 mb-3">
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 sm:mb-3">My Club Settings</h3>
+            <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
               Set your club name to quickly filter games for your teams using the "My Club" filter.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col gap-2 sm:gap-3">
               <input
                 type="text"
                 value={clubName}
                 onChange={(e) => setClubName(e.target.value)}
                 placeholder="e.g., Reel Stream Media Group"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
               />
               <div className="flex gap-2">
                 <button
                   onClick={handleSaveClubName}
                   disabled={!clubName.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap text-sm sm:text-base"
                 >
                   Save
                 </button>
                 {clubName && (
                   <button
                     onClick={handleClearClubName}
-                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium whitespace-nowrap"
+                    className="flex-1 sm:flex-initial px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium whitespace-nowrap text-sm sm:text-base"
                   >
                     Clear
                   </button>
@@ -369,19 +369,19 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
           </div>
 
           {/* Add Event Section */}
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm sm:text-base"
             >
               {showAddForm ? 'Cancel' : '+ Add New Event'}
             </button>
 
             {showAddForm && (
-              <form onSubmit={handleAddEvent} className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="space-y-4">
+              <form onSubmit={handleAddEvent} className="mt-3 sm:mt-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="space-y-3 sm:space-y-4">
                   <div>
-                    <label htmlFor="eventId" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="eventId" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                       Gotsport Event ID *
                     </label>
                     <input
@@ -390,15 +390,15 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
                       value={newEventId}
                       onChange={(e) => setNewEventId(e.target.value)}
                       placeholder="e.g., 39474"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
                       required
                     />
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500 break-all">
                       Find this in the Gotsport URL: https://system.gotsport.com/org_event/events/<strong>39474</strong>
                     </p>
                   </div>
                   <div>
-                    <label htmlFor="eventName" className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="eventName" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                       Event Name *
                     </label>
                     <input
@@ -406,15 +406,15 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
                       id="eventName"
                       value={newEventName}
                       onChange={(e) => setNewEventName(e.target.value)}
-                      placeholder="e.g., 2025 U.S. Futsal Northeast Regional Championship"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="e.g., 2025 U.S. Futsal Northeast..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
                       required
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={addEventMutation.isPending}
-                    className="w-full sm:w-auto px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="w-full px-4 sm:px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed text-sm sm:text-base"
                   >
                     {addEventMutation.isPending ? 'Adding...' : 'Add Event & Start Scraping'}
                   </button>
@@ -425,23 +425,23 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
 
           {/* Events List */}
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Active Events</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Active Events</h3>
             
             {isLoading ? (
               <div className="text-center py-8 text-gray-500">Loading events...</div>
             ) : !events || events.length === 0 ? (
               <div className="text-center py-8 text-gray-500">No events found</div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {events.map((event) => (
                   <div
                     key={event.id}
-                    className="p-4 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+                    className="p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-3">
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-gray-900 mb-1 truncate">{event.name}</h4>
-                        <div className="text-sm text-gray-500 space-y-1">
+                        <h4 className="font-semibold text-gray-900 mb-1 text-sm sm:text-base break-words">{event.name}</h4>
+                        <div className="text-xs sm:text-sm text-gray-500 space-y-1">
                           <p>
                             <span className="font-medium">Event ID:</span> {event.gotsport_event_id}
                           </p>
@@ -463,24 +463,24 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                         <button
                           onClick={() => setViewingLogsForEvent(event.id)}
-                          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium whitespace-nowrap"
+                          className="px-3 sm:px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-xs sm:text-sm"
                         >
                           View Logs
                         </button>
                         <button
                           onClick={() => handleReScrapeEvent(event)}
                           disabled={reScrapeEventMutation.isPending}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                          className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed text-xs sm:text-sm"
                         >
                           {reScrapeEventMutation.isPending ? 'Scraping...' : 'Re-Scrape'}
                         </button>
                         <button
                           onClick={() => handleDeleteEvent(event)}
                           disabled={deleteEventMutation.isPending}
-                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                          className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed text-xs sm:text-sm"
                         >
                           Delete
                         </button>
@@ -494,10 +494,10 @@ export default function AdminModal({ isOpen, onClose, currentEventId }: AdminMod
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 bg-gray-50">
+        <div className="p-3 sm:p-6 border-t border-gray-200 bg-gray-50">
           <button
             onClick={onClose}
-            className="w-full sm:w-auto px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
+            className="w-full px-4 sm:px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm sm:text-base"
           >
             Close
           </button>
