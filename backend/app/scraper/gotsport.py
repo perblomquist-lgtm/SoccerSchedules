@@ -537,9 +537,8 @@ class GotsportScraper:
                     
                     # Try to find division name from parent table/row structure
                     text = None
-                    text_parts = []
                     
-                    # Look for parent tr (table row)
+                    # Look for parent tr (table row) or containing div
                     current = elem
                     for _ in range(5):  # Go up max 5 levels
                         current = current.parent
@@ -548,38 +547,32 @@ class GotsportScraper:
                         
                         # Check if this is a table row or div containing division info
                         if current.name in ['tr', 'div', 'td']:
-                            # Get all text from this level
-                            row_text = current.get_text(separator='|', strip=True)
-                            # Split and look for division-like text
-                            parts = [p.strip() for p in row_text.split('|')]
+                            # Get all text from this level with space separator
+                            row_text = current.get_text(separator=' ', strip=True)
+                            # Clean up multiple spaces
+                            row_text = ' '.join(row_text.split())
                             
-                            # Collect all relevant parts instead of just the first one
-                            for part in parts:
-                                # Skip button text and empty strings
-                                if part in ['Schedule', 'Standings', 'Bracket', 'View', ''] or not part:
-                                    continue
-                                # Skip obvious navigation text
-                                if any(skip in part.lower() for skip in ['click', 'view', 'more', 'details', 'info']):
-                                    continue
-                                # Look for patterns like U10B, Boys U12, Men's Open, Championship, etc.
-                                # Accept longer names that include division details like "U9-Championship"
-                                if (re.search(r'(U\d+|Boys|Girls|Men|Women|Open|Adult|Championship|Premier|Flight|Division|\d+v\d+)', part, re.IGNORECASE) 
-                                    and len(part) < 100 
-                                    and part not in ['Schedule', 'Standings', 'Bracket']):
-                                    text_parts.append(part)
-                                # If it's reasonably short and contains alphanumeric content, consider it
-                                elif len(part) < 60 and re.search(r'[A-Za-z0-9]', part) and part not in text_parts:
-                                    # Only add if we don't already have something better
-                                    if not text_parts:
-                                        text_parts.append(part)
+                            # Remove button text
+                            for btn in ['Schedule', 'Standings', 'Bracket', 'View']:
+                                row_text = row_text.replace(btn, '')
+                            row_text = ' '.join(row_text.split())
                             
-                            if text_parts:
-                                break
+                            # Check if this text looks like a division name
+                            # Should have age group or gender or format like "11v11"
+                            if (re.search(r'(U\d+|Boys|Girls|Men|Women|Open|Adult|Championship|Premier|Flight|Division|\d+v\d+)', row_text, re.IGNORECASE)
+                                and len(row_text) < 150
+                                and row_text.strip()):
+                                # Filter out obvious non-division text
+                                if not any(skip in row_text.lower() for skip in ['click here', 'view more', 'details', 'information']):
+                                    text = row_text.strip()
+                                    break
+                            # If it's short and has content, might be good enough
+                            elif len(row_text) < 60 and row_text.strip() and re.search(r'[A-Za-z0-9]', row_text):
+                                text = row_text.strip()
+                                # Keep looking for a better match
                     
-                    # Combine all parts into a single division name
-                    if text_parts:
-                        text = ' '.join(text_parts)
-                        # Clean up extra whitespace
+                    # Clean up the text
+                    if text:
                         text = ' '.join(text.split())
                     
                     # If still no good name, use a default
