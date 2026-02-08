@@ -537,6 +537,7 @@ class GotsportScraper:
                     
                     # Try to find division name from parent table/row structure
                     text = None
+                    text_parts = []
                     
                     # Look for parent tr (table row)
                     current = elem
@@ -552,6 +553,7 @@ class GotsportScraper:
                             # Split and look for division-like text
                             parts = [p.strip() for p in row_text.split('|')]
                             
+                            # Collect all relevant parts instead of just the first one
                             for part in parts:
                                 # Skip button text and empty strings
                                 if part in ['Schedule', 'Standings', 'Bracket', 'View', ''] or not part:
@@ -561,21 +563,23 @@ class GotsportScraper:
                                     continue
                                 # Look for patterns like U10B, Boys U12, Men's Open, Championship, etc.
                                 # Accept longer names that include division details like "U9-Championship"
-                                if (re.search(r'(U\d+|Boys|Girls|Men|Women|Open|Adult|Championship|Premier|Flight|Division)', part, re.IGNORECASE) 
+                                if (re.search(r'(U\d+|Boys|Girls|Men|Women|Open|Adult|Championship|Premier|Flight|Division|\d+v\d+)', part, re.IGNORECASE) 
                                     and len(part) < 100 
                                     and part not in ['Schedule', 'Standings', 'Bracket']):
-                                    text = part
-                                    break
-                                # If it's reasonably short and contains alphanumeric content, use it
-                                elif len(part) < 60 and re.search(r'[A-Za-z0-9]', part):
-                                    text = part
-                                    break
+                                    text_parts.append(part)
+                                # If it's reasonably short and contains alphanumeric content, consider it
+                                elif len(part) < 60 and re.search(r'[A-Za-z0-9]', part) and part not in text_parts:
+                                    # Only add if we don't already have something better
+                                    if not text_parts:
+                                        text_parts.append(part)
                             
-                            if text:
+                            if text_parts:
                                 break
                     
-                    # Clean up extra whitespace
-                    if text:
+                    # Combine all parts into a single division name
+                    if text_parts:
+                        text = ' '.join(text_parts)
+                        # Clean up extra whitespace
                         text = ' '.join(text.split())
                     
                     # If still no good name, use a default
