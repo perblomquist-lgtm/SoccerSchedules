@@ -535,41 +535,62 @@ class GotsportScraper:
                     else:
                         schedule_url = f"https://system.gotsport.com/org_event/events/{event_id}/schedules?group={group_id}"
                     
-                    # Try to find division name from parent table/row structure
-                    text = None
+                    # Try to find division name from parent structure
+                    # Strategy: Look for age group in headers/parent containers, then combine with row text
+                    age_group = None
+                    division_qualifier = None
                     
-                    # Look for parent tr (table row) or containing div
+                    # First, search up the tree for age group indicators (U9, U10, etc.)
                     current = elem
-                    for _ in range(5):  # Go up max 5 levels
+                    for _ in range(10):  # Go up more levels to find section headers
                         current = current.parent
                         if not current:
                             break
                         
-                        # Check if this is a table row or div containing division info
+                        # Look for age group in headers or prominent text
+                        current_text = current.get_text(separator=' ', strip=True)
+                        age_match = re.search(r'\b(U\d{1,2}|Boys|Girls|Men|Women|Open)\b', current_text, re.IGNORECASE)
+                        if age_match and not age_group:
+                            # Check if this looks like a section header (short text with age group)
+                            cleaned = re.sub(r'\b(Schedule|Standings|Bracket|View|Results)\b', '', current_text, flags=re.IGNORECASE)
+                            cleaned = ' '.join(cleaned.split())
+                            # If the cleaned text is short and contains the age group, it's likely a header
+                            if len(cleaned) < 30 and age_match.group(1).upper() in cleaned.upper():
+                                age_group = age_match.group(1).upper()
+                    
+                    # Now get the division qualifier from the immediate row
+                    current = elem
+                    for _ in range(5):  # Go up to find the row with division details
+                        current = current.parent
+                        if not current:
+                            break
+                        
                         if current.name in ['tr', 'div', 'td']:
-                            # Get all text from this level with space separator
                             row_text = current.get_text(separator=' ', strip=True)
-                            # Clean up multiple spaces
-                            row_text = ' '.join(row_text.split())
-                            
-                            # Remove button text
-                            for btn in ['Schedule', 'Standings', 'Bracket', 'View']:
+                            # Remove button/navigation text
+                            for btn in ['Schedule', 'Standings', 'Bracket', 'View', 'Results']:
                                 row_text = row_text.replace(btn, '')
-                            row_text = ' '.join(row_text.split())
+                            row_text = ' '.join(row_text.split()).strip()
                             
-                            # Check if this text looks like a division name
-                            # Should have age group or gender or format like "11v11"
-                            if (re.search(r'(U\d+|Boys|Girls|Men|Women|Open|Adult|Championship|Premier|Flight|Division|\d+v\d+)', row_text, re.IGNORECASE)
-                                and len(row_text) < 150
-                                and row_text.strip()):
-                                # Filter out obvious non-division text
-                                if not any(skip in row_text.lower() for skip in ['click here', 'view more', 'details', 'information']):
-                                    text = row_text.strip()
+                            # Look for division qualifiers (Championship, Elite, Superior, 9v9, 11v11, etc.)
+                            if row_text and len(row_text) < 100:
+                                # Check if this has division-like content
+                                if re.search(r'(Championship|Elite|Superior|Premier|Flight|Black|Orange|White|Red|Blue|Green|\d+v\d+)', row_text, re.IGNORECASE):
+                                    division_qualifier = row_text
                                     break
-                            # If it's short and has content, might be good enough
-                            elif len(row_text) < 60 and row_text.strip() and re.search(r'[A-Za-z0-9]', row_text):
-                                text = row_text.strip()
-                                # Keep looking for a better match
+                                # Or if it's reasonably short text with alphanumeric content
+                                elif len(row_text) < 40 and re.search(r'[A-Za-z0-9]', row_text):
+                                    division_qualifier = row_text
+                    
+                    # Combine age group and division qualifier
+                    if age_group and division_qualifier:
+                        text = f"{age_group} {division_qualifier}"
+                    elif division_qualifier:
+                        text = division_qualifier
+                    elif age_group:
+                        text = age_group
+                    else:
+                        text = None
                     
                     # Clean up the text
                     if text:
