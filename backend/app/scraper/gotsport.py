@@ -540,43 +540,9 @@ class GotsportScraper:
                     age_group = None
                     division_qualifier = None
                     
-                    # First, find the closest parent panel (could be panel, panel-body, or similar container)
+                    # First get division qualifier from the immediate row (look for <b> tag)
                     current = elem
-                    panel_container = None
-                    for _ in range(10):
-                        current = current.parent
-                        if not current:
-                            break
-                        # Look for panel or similar container
-                        class_attr = current.get('class', [])
-                        if any('panel' in str(c) for c in class_attr):
-                            panel_container = current
-                            break
-                    
-                    # If we found a panel, look for age group in panel-heading
-                    if panel_container:
-                        # Find panel-heading within this panel
-                        panel_heading = panel_container.find(class_=lambda x: x and 'panel-heading' in x)
-                        if panel_heading:
-                            heading_text = panel_heading.get_text(separator=' ', strip=True)
-                            # Remove button text
-                            for btn in ['Schedule', 'Standings', 'Bracket', 'View', 'Results', 'Calendar']:
-                                heading_text = heading_text.replace(btn, '')
-                            heading_text = ' '.join(heading_text.split()).strip()
-                            
-                            # Look for age group pattern in heading
-                            age_match = re.search(r'\b(U\d{1,2}|\d{1,2}U)\b', heading_text, re.IGNORECASE)
-                            if age_match:
-                                potential_age = age_match.group(1).upper()
-                                # Normalize format (9U -> U9, 10U -> U10)
-                                if re.match(r'^\d+U$', potential_age):
-                                    age_group = 'U' + potential_age[:-1]
-                                else:
-                                    age_group = potential_age
-                    
-                    # Now get division qualifier from the immediate row
-                    current = elem
-                    for _ in range(5):
+                    for _ in range(8):
                         current = current.parent
                         if not current:
                             break
@@ -599,6 +565,41 @@ class GotsportScraper:
                             if row_text and len(row_text) < 100:
                                 if re.search(r'(Championship|Elite|Superior|Premier|Flight|Black|Orange|White|Red|Blue|Green|\d+v\d+)', row_text, re.IGNORECASE):
                                     division_qualifier = row_text
+                                    break
+                    
+                    # Now find age group by looking up to panel level and finding panel-heading
+                    current = elem
+                    for _ in range(15):
+                        current = current.parent
+                        if not current:
+                            break
+                        
+                        # Check if this is a panel container (class contains 'panel')
+                        class_attr = current.get('class', [])
+                        class_str = ' '.join(class_attr) if isinstance(class_attr, list) else str(class_attr)
+                        
+                        if 'panel' in class_str and 'panel-body' not in class_str:
+                            # Found a panel, now look for panel-heading
+                            panel_heading = current.find('div', class_=lambda x: x and 'panel-heading' in (x if isinstance(x, str) else ' '.join(x)))
+                            if not panel_heading:
+                                panel_heading = current.find('div', class_=lambda x: x and 'panel-title' in (x if isinstance(x, str) else ' '.join(x)))
+                            
+                            if panel_heading:
+                                heading_text = panel_heading.get_text(separator=' ', strip=True)
+                                # Remove button text
+                                for btn in ['Schedule', 'Standings', 'Bracket', 'View', 'Results', 'Calendar']:
+                                    heading_text = heading_text.replace(btn, '')
+                                heading_text = ' '.join(heading_text.split()).strip()
+                                
+                                # Look for age group pattern in heading
+                                age_match = re.search(r'\b(U\d{1,2}|\d{1,2}U)\b', heading_text, re.IGNORECASE)
+                                if age_match:
+                                    potential_age = age_match.group(1).upper()
+                                    # Normalize format (9U -> U9, 10U -> U10)
+                                    if re.match(r'^\d+U$', potential_age):
+                                        age_group = 'U' + potential_age[:-1]
+                                    else:
+                                        age_group = potential_age
                                     break
                     
                     # Combine age group and division qualifier
