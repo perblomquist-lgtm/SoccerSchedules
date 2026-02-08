@@ -584,7 +584,19 @@ class GotsportScraper:
                     
                     # Combine age group and division qualifier
                     if age_group and division_qualifier:
-                        text = f"{age_group} {division_qualifier}"
+                        # Normalize age group format (8U -> U8, 9U -> U9, etc.)
+                        normalized_age = age_group
+                        if re.match(r'^\d+U$', age_group, re.IGNORECASE):
+                            normalized_age = 'U' + age_group[:-1]
+                        
+                        # Check if the division qualifier already contains the age group
+                        # If so, just use the qualifier (avoid "U8 U8B" redundancy)
+                        if (normalized_age.upper() in division_qualifier.upper() or 
+                            age_group.upper() in division_qualifier.upper()):
+                            text = division_qualifier
+                        else:
+                            # Combine them
+                            text = f"{normalized_age} {division_qualifier}"
                     elif division_qualifier:
                         text = division_qualifier
                     elif age_group:
