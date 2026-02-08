@@ -536,31 +536,13 @@ class GotsportScraper:
                         schedule_url = f"https://system.gotsport.com/org_event/events/{event_id}/schedules?group={group_id}"
                     
                     # Try to find division name from parent structure
-                    # Strategy: Look for age group in headers/parent containers, then combine with row text
+                    # Strategy: Look for age group in headers/containers, then combine with row text
                     age_group = None
                     division_qualifier = None
                     
-                    # First, search up the tree for age group indicators (U9, U10, etc.)
+                    # First, get the division qualifier from the immediate row
                     current = elem
-                    for _ in range(10):  # Go up more levels to find section headers
-                        current = current.parent
-                        if not current:
-                            break
-                        
-                        # Look for age group in headers or prominent text
-                        current_text = current.get_text(separator=' ', strip=True)
-                        age_match = re.search(r'\b(U\d{1,2}|Boys|Girls|Men|Women|Open)\b', current_text, re.IGNORECASE)
-                        if age_match and not age_group:
-                            # Check if this looks like a section header (short text with age group)
-                            cleaned = re.sub(r'\b(Schedule|Standings|Bracket|View|Results)\b', '', current_text, flags=re.IGNORECASE)
-                            cleaned = ' '.join(cleaned.split())
-                            # If the cleaned text is short and contains the age group, it's likely a header
-                            if len(cleaned) < 30 and age_match.group(1).upper() in cleaned.upper():
-                                age_group = age_match.group(1).upper()
-                    
-                    # Now get the division qualifier from the immediate row
-                    current = elem
-                    for _ in range(5):  # Go up to find the row with division details
+                    for _ in range(5):
                         current = current.parent
                         if not current:
                             break
@@ -572,7 +554,7 @@ class GotsportScraper:
                                 row_text = row_text.replace(btn, '')
                             row_text = ' '.join(row_text.split()).strip()
                             
-                            # Look for division qualifiers (Championship, Elite, Superior, 9v9, 11v11, etc.)
+                            # Look for division qualifiers
                             if row_text and len(row_text) < 100:
                                 # Check if this has division-like content
                                 if re.search(r'(Championship|Elite|Superior|Premier|Flight|Black|Orange|White|Red|Blue|Green|\d+v\d+)', row_text, re.IGNORECASE):
@@ -582,21 +564,43 @@ class GotsportScraper:
                                 elif len(row_text) < 40 and re.search(r'[A-Za-z0-9]', row_text):
                                     division_qualifier = row_text
                     
+                    # Now search broadly for age group - check siblings and parent containers
+                    current = elem
+                    for level in range(15):  # Search up more levels
+                        current = current.parent
+                        if not current:
+                            break
+                        
+                        # Look at this element's text
+                        elem_text = None
+                        if current.name in ['h1', 'h2', 'h3', 'h4', 'div', 'header']:
+                            # For headers, get direct text only (not deep children)
+                            elem_text = ' '.join([s.strip() for s in current.stripped_strings if s.strip()])
+                        
+                        if elem_text:
+                            # Check if this looks like an age group header
+                            age_match = re.search(r'\b(\d{1,2}U|U\d{1,2})\b', elem_text, re.IGNORECASE)
+                            if age_match:
+                                # Make sure it's a short header-like text (not a long paragraph)
+                                cleaned = re.sub(r'\b(Schedule|Standings|Bracket|View|Results)\b', '', elem_text, flags=re.IGNORECASE)
+                                cleaned = ' '.join(cleaned.split()).strip()
+                                if len(cleaned) < 40 and age_match.group(1).upper() in cleaned.upper():
+                                    potential_age = age_match.group(1).upper()
+                                    # Normalize format (9U -> U9, 10U -> U10)
+                                    if re.match(r'^\d+U$', potential_age):
+                                        age_group = 'U' + potential_age[:-1]
+                                    else:
+                                        age_group = potential_age
+                                    break
+                    
                     # Combine age group and division qualifier
                     if age_group and division_qualifier:
-                        # Normalize age group format (8U -> U8, 9U -> U9, etc.)
-                        normalized_age = age_group
-                        if re.match(r'^\d+U$', age_group, re.IGNORECASE):
-                            normalized_age = 'U' + age_group[:-1]
-                        
                         # Check if the division qualifier already contains the age group
-                        # If so, just use the qualifier (avoid "U8 U8B" redundancy)
-                        if (normalized_age.upper() in division_qualifier.upper() or 
-                            age_group.upper() in division_qualifier.upper()):
+                        if (age_group.upper() in division_qualifier.upper()):
                             text = division_qualifier
                         else:
                             # Combine them
-                            text = f"{normalized_age} {division_qualifier}"
+                            text = f"{age_group} {division_qualifier}"
                     elif division_qualifier:
                         text = division_qualifier
                     elif age_group:
