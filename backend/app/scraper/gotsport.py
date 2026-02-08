@@ -553,17 +553,21 @@ class GotsportScraper:
                             parts = [p.strip() for p in row_text.split('|')]
                             
                             for part in parts:
-                                # Skip button text
-                                if part in ['Schedule', 'Standings', 'Bracket', 'View', '']:
+                                # Skip button text and empty strings
+                                if part in ['Schedule', 'Standings', 'Bracket', 'View', ''] or not part:
                                     continue
-                                # Look for patterns like U10B, Boys U12, Men's Open, etc.
-                                if (re.search(r'(U\d+|Boys|Girls|Men|Women|Open|Adult)', part, re.IGNORECASE) 
-                                    and len(part) < 50 
+                                # Skip obvious navigation text
+                                if any(skip in part.lower() for skip in ['click', 'view', 'more', 'details', 'info']):
+                                    continue
+                                # Look for patterns like U10B, Boys U12, Men's Open, Championship, etc.
+                                # Accept longer names that include division details like "U9-Championship"
+                                if (re.search(r'(U\d+|Boys|Girls|Men|Women|Open|Adult|Championship|Premier|Flight|Division)', part, re.IGNORECASE) 
+                                    and len(part) < 100 
                                     and part not in ['Schedule', 'Standings', 'Bracket']):
                                     text = part
                                     break
-                                # If it's reasonably short and doesn't look like navigation, use it
-                                elif len(part) < 30 and not any(skip in part.lower() for skip in ['click', 'view', 'more']):
+                                # If it's reasonably short and contains alphanumeric content, use it
+                                elif len(part) < 60 and re.search(r'[A-Za-z0-9]', part):
                                     text = part
                                     break
                             
