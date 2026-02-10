@@ -5,6 +5,7 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from urllib.parse import urlparse, parse_qs
+from zoneinfo import ZoneInfo
 
 from playwright.async_api import async_playwright, Browser, Page, Response
 from bs4 import BeautifulSoup
@@ -738,14 +739,16 @@ class GotsportScraper:
                                     time_match = re.search(r'(\d{1,2}:\d{2}\s*[AP]M)', time_text, re.IGNORECASE)
                                     
                                     if date_match:
-                                        # Parse date string to date object (not datetime to avoid timezone issues)
+                                        # Parse date string to datetime at noon in Eastern timezone
+                                        # Using noon avoids date boundary issues when converting to UTC
                                         date_str = date_match.group(1)
                                         try:
                                             from datetime import datetime as dt
-                                            # Parse to datetime first, then extract just the date
-                                            parsed_dt = dt.strptime(date_str, '%b %d, %Y')
-                                            # Store as date object to avoid timezone conversion issues
-                                            game_data['game_date'] = parsed_dt.date()
+                                            # Parse to naive datetime at noon
+                                            parsed_dt = dt.strptime(date_str, '%b %d, %Y').replace(hour=12, minute=0, second=0)
+                                            # Make it timezone-aware in Eastern Time
+                                            eastern = ZoneInfo('America/New_York')
+                                            game_data['game_date'] = parsed_dt.replace(tzinfo=eastern)
                                         except ValueError:
                                             # If parsing fails, store as string for now
                                             game_data['game_date'] = date_str
