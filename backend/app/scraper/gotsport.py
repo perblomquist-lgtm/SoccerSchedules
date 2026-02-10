@@ -738,11 +738,14 @@ class GotsportScraper:
                                     time_match = re.search(r'(\d{1,2}:\d{2}\s*[AP]M)', time_text, re.IGNORECASE)
                                     
                                     if date_match:
-                                        # Parse date string to datetime object
+                                        # Parse date string to date object (not datetime to avoid timezone issues)
                                         date_str = date_match.group(1)
                                         try:
                                             from datetime import datetime as dt
-                                            game_data['game_date'] = dt.strptime(date_str, '%b %d, %Y')
+                                            # Parse to datetime first, then extract just the date
+                                            parsed_dt = dt.strptime(date_str, '%b %d, %Y')
+                                            # Store as date object to avoid timezone conversion issues
+                                            game_data['game_date'] = parsed_dt.date()
                                         except ValueError:
                                             # If parsing fails, store as string for now
                                             game_data['game_date'] = date_str
