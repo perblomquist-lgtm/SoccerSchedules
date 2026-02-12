@@ -162,9 +162,15 @@ class SmartScheduler:
             last_scraped = last_scraped.replace(tzinfo=timezone.utc)
         
         next_scrape = last_scraped + timedelta(hours=interval_hours)
+        
+        # If next scrape is in the past (e.g., interval changed from 24h to 1h), schedule for now
+        now = datetime.now(timezone.utc)
+        if next_scrape < now:
+            return now
+        
         return next_scrape
     
-    def get_hours_until_next_scrape(self, event: Event) -> Optional[int]:
+    def get_hours_until_next_scrape(self, event: Event) -> Optional[float]:
         """Get hours until next scrape for an event"""
         next_scrape = self.get_next_scrape_time(event)
         if not next_scrape:
@@ -175,7 +181,7 @@ class SmartScheduler:
             next_scrape = next_scrape.replace(tzinfo=timezone.utc)
         
         hours = (next_scrape - now).total_seconds() / 3600
-        return max(0, int(hours))
+        return max(0, round(hours, 1))  # Return float with 1 decimal place
     
     async def _scrape_event(self, event_id: int, event_url: str):
         """Scrape a single event"""
