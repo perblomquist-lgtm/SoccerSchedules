@@ -111,13 +111,24 @@ class SmartScheduler:
         
         now = datetime.now(timezone.utc)
         
-        # Ensure dates are timezone-aware
+        # Convert date objects to datetime objects at midnight UTC
         start_date = event.start_date
-        if start_date.tzinfo is None:
-            start_date = start_date.replace(tzinfo=timezone.utc)
+        if isinstance(start_date, datetime):
+            # It's already a datetime
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+        else:
+            # It's a date object, convert to datetime at midnight UTC
+            start_date = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+        
         end_date = event.end_date
-        if end_date.tzinfo is None:
-            end_date = end_date.replace(tzinfo=timezone.utc)
+        if isinstance(end_date, datetime):
+            # It's already a datetime
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+        else:
+            # It's a date object, convert to datetime at end of day UTC (23:59:59)
+            end_date = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
         
         # Calculate day before tournament starts
         day_before_start = start_date - timedelta(days=1)
@@ -129,12 +140,15 @@ class SmartScheduler:
         
         if now < day_before_start:
             # Before tournament window
+            logger.debug(f"Event {event.id}: Before tournament window (now: {now}, day_before: {day_before_start})")
             return settings.DEFAULT_SCRAPE_INTERVAL_HOURS
         elif now <= end_date:
             # During tournament window (including day before)
+            logger.info(f"Event {event.id}: IN TOURNAMENT WINDOW - using hourly interval (now: {now}, start: {start_date}, end: {end_date})")
             return settings.TOURNAMENT_SCRAPE_INTERVAL_HOURS
         else:
             # After tournament
+            logger.debug(f"Event {event.id}: After tournament (now: {now}, end: {end_date})")
             return settings.DEFAULT_SCRAPE_INTERVAL_HOURS
     
     def get_next_scrape_time(self, event: Event) -> Optional[datetime]:
