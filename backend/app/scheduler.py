@@ -161,13 +161,16 @@ class SmartScheduler:
         if last_scraped.tzinfo is None:
             last_scraped = last_scraped.replace(tzinfo=timezone.utc)
         
-        next_scrape = last_scraped + timedelta(hours=interval_hours)
-        
-        # If next scrape is in the past (e.g., interval changed from 24h to 1h), schedule for now
         now = datetime.now(timezone.utc)
-        if next_scrape < now:
+        time_since_last_scrape = (now - last_scraped).total_seconds() / 3600
+        
+        # If the time since last scrape is greater than the current interval,
+        # we need to scrape now (e.g., interval changed from 24h to 1h)
+        if time_since_last_scrape >= interval_hours:
+            logger.info(f"Event {event.id}: Time since last scrape ({time_since_last_scrape:.1f}h) >= interval ({interval_hours}h), scheduling for now")
             return now
         
+        next_scrape = last_scraped + timedelta(hours=interval_hours)
         return next_scrape
     
     def get_hours_until_next_scrape(self, event: Event) -> Optional[float]:
