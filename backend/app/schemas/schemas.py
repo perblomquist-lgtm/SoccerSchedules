@@ -50,7 +50,7 @@ class EventWithStats(EventResponse):
     total_divisions: int = 0
     total_teams: int = 0
     total_games: int = 0
-    next_scrape_in_hours: Optional[int] = None
+    next_scrape_in_hours: Optional[float] = None
 
 
 # ============================================================================
@@ -252,5 +252,5 @@ class SchedulerStatus(BaseModel):
     event_id: int
     event_name: str
     last_scraped: Optional[datetime]
-    next_scrape_in_hours: int
+    next_scrape_in_hours: float
     scrape_interval_hours: int
