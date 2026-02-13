@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { schedulesApi, eventsApi, Game } from '@/lib/api';
-import { useState, use, useEffect } from 'react';
+import { useState, use, useEffect, useMemo } from 'react';
 import AdminModal from '@/components/AdminModal';
 
 type FilterType = 'all' | 'division' | 'team' | 'location' | 'favorites' | 'current' | 'myclub';
@@ -98,16 +98,21 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     },
   });
 
-  // Extract unique teams from all games
-  const allTeams = schedule ? Array.from(new Set([
-    ...schedule.games.map(g => g.home_team_name).filter((name): name is string => Boolean(name)),
-    ...schedule.games.map(g => g.away_team_name).filter((name): name is string => Boolean(name))
-  ])).sort() : [];
+  // PERFORMANCE: Memoize team/location lists to prevent re-computing on every render
+  const allTeams = useMemo(() => {
+    if (!schedule) return [];
+    return Array.from(new Set([
+      ...schedule.games.map(g => g.home_team_name).filter((name): name is string => Boolean(name)),
+      ...schedule.games.map(g => g.away_team_name).filter((name): name is string => Boolean(name))
+    ])).sort();
+  }, [schedule?.games]);
 
-  // Extract unique locations from all games
-  const allLocations = schedule ? Array.from(new Set(
-    schedule.games.map(g => g.field_name).filter((name): name is string => Boolean(name))
-  )).sort() : [];
+  const allLocations = useMemo(() => {
+    if (!schedule) return [];
+    return Array.from(new Set(
+      schedule.games.map(g => g.field_name).filter((name): name is string => Boolean(name))
+    )).sort();
+  }, [schedule?.games]);
 
   // Helper function to parse time strings like "8:00 AM" to comparable numbers
   const parseTime = (timeStr: string | null) => {
@@ -126,93 +131,109 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   };
 
   // Helper function to get current matches (games that have started but likely haven't finished)
-  const getCurrentMatches = (games: Game[]) => {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD format
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const getCurrentMatches = useMemo(() => {
+    return (games: Game[]) => {
+      const now = new Date();
+      // Get today's date in local timezone (YYYY-MM-DD)
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${year}-${month}-${day}`;
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    // Filter games that are today
-    const todayGames = games.filter(game => {
-      if (!game.game_date) return false;
-      const gameDate = new Date(game.game_date).toISOString().split('T')[0];
-      return gameDate === todayStr;
-    });
+      // Filter games that are today (compare dates in local timezone)
+      const todayGames = games.filter(game => {
+        if (!game.game_date) return false;
+        const gameDate = new Date(game.game_date);
+        const gameYear = gameDate.getFullYear();
+        const gameMonth = String(gameDate.getMonth() + 1).padStart(2, '0');
+        const gameDay = String(gameDate.getDate()).padStart(2, '0');
+        const gameDateStr = `${gameYear}-${gameMonth}-${gameDay}`;
+        return gameDateStr === todayStr;
+      });
 
-    // Group games by field
-    const gamesByField = new Map<string, Game[]>();
-    todayGames.forEach(game => {
-      const field = game.field_name || 'Unknown Field';
-      if (!gamesByField.has(field)) {
-        gamesByField.set(field, []);
-      }
-      gamesByField.get(field)!.push(game);
-    });
+      // Group games by field
+      const gamesByField = new Map<string, Game[]>();
+      todayGames.forEach(game => {
+        const field = game.field_name || 'Unknown Field';
+        if (!gamesByField.has(field)) {
+          gamesByField.set(field, []);
+        }
+        gamesByField.get(field)!.push(game);
+      });
 
-    // For each field, find the game with the last start time before current time
-    const currentGames: Game[] = [];
-    gamesByField.forEach((fieldGames, field) => {
-      // Sort games by start time
-      const sortedGames = fieldGames.sort((a, b) => {
+      // For each field, find the game with the last start time before current time
+      const currentGames: Game[] = [];
+      gamesByField.forEach((fieldGames, field) => {
+        // Sort games by start time
+        const sortedGames = fieldGames.sort((a, b) => {
+          const timeA = parseTime(a.game_time);
+          const timeB = parseTime(b.game_time);
+          return timeA - timeB;
+        });
+
+        // Find the last game that has started (start time <= current time)
+        let lastStartedGame: Game | null = null;
+        for (const game of sortedGames) {
+          const gameStartMinutes = parseTime(game.game_time);
+          if (gameStartMinutes <= currentMinutes) {
+            lastStartedGame = game;
+          } else {
+            break; // Since sorted, no need to check further
+          }
+        }
+
+        if (lastStartedGame) {
+          currentGames.push(lastStartedGame);
+        }
+      });
+
+      return currentGames;
+    };
+  }, []); // Empty deps - function logic doesn't change
+
+  // PERFORMANCE: Memoize filtering and sorting to prevent re-computing on every render
+  const filteredGames = useMemo(() => {
+    if (!schedule?.games) return [];
+    
+    return schedule.games
+      .filter(game => {
+        if (filterType === 'current') {
+          // For current matches, we'll filter separately
+          return true;
+        }
+        if (filterType === 'location' && locationFilter) {
+          return game.field_name === locationFilter;
+        }
+        if (filterType === 'team' && teamFilter) {
+          return (game.home_team_name === teamFilter) || (game.away_team_name === teamFilter);
+        }
+        if (filterType === 'favorites') {
+          return (game.home_team_name && favoriteTeams.includes(game.home_team_name)) ||
+                 (game.away_team_name && favoriteTeams.includes(game.away_team_name));
+        }
+        if (filterType === 'myclub') {
+          if (!myClubName) return false;
+          return (game.home_team_name && game.home_team_name.includes(myClubName)) ||
+                 (game.away_team_name && game.away_team_name.includes(myClubName));
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        // First sort by date
+        const dateA = a.game_date ? new Date(a.game_date).getTime() : 0;
+        const dateB = b.game_date ? new Date(b.game_date).getTime() : 0;
+        
+        if (dateA !== dateB) {
+          return dateA - dateB;
+        }
+        
+        // If dates are equal, sort by time
         const timeA = parseTime(a.game_time);
         const timeB = parseTime(b.game_time);
         return timeA - timeB;
       });
-
-      // Find the last game that has started (start time <= current time)
-      let lastStartedGame: Game | null = null;
-      for (const game of sortedGames) {
-        const gameStartMinutes = parseTime(game.game_time);
-        if (gameStartMinutes <= currentMinutes) {
-          lastStartedGame = game;
-        } else {
-          break; // Since sorted, no need to check further
-        }
-      }
-
-      if (lastStartedGame) {
-        currentGames.push(lastStartedGame);
-      }
-    });
-
-    return currentGames;
-  };
-
-  // Filter games by location when location filter is active and sort by date/time
-  const filteredGames = (schedule?.games.filter(game => {
-    if (filterType === 'current') {
-      // For current matches, we'll filter separately
-      return true;
-    }
-    if (filterType === 'location' && locationFilter) {
-      return game.field_name === locationFilter;
-    }
-    if (filterType === 'team' && teamFilter) {
-      return (game.home_team_name === teamFilter) || (game.away_team_name === teamFilter);
-    }
-    if (filterType === 'favorites') {
-      return (game.home_team_name && favoriteTeams.includes(game.home_team_name)) ||
-             (game.away_team_name && favoriteTeams.includes(game.away_team_name));
-    }
-    if (filterType === 'myclub') {
-      if (!myClubName) return false;
-      return (game.home_team_name && game.home_team_name.includes(myClubName)) ||
-             (game.away_team_name && game.away_team_name.includes(myClubName));
-    }
-    return true;
-  }) || []).sort((a, b) => {
-    // First sort by date
-    const dateA = a.game_date ? new Date(a.game_date).getTime() : 0;
-    const dateB = b.game_date ? new Date(b.game_date).getTime() : 0;
-    
-    if (dateA !== dateB) {
-      return dateA - dateB;
-    }
-    
-    // If dates are equal, sort by time
-    const timeA = parseTime(a.game_time);
-    const timeB = parseTime(b.game_time);
-    return timeA - timeB;
-  });
+  }, [schedule?.games, filterType, locationFilter, teamFilter, favoriteTeams, myClubName]);
 
   // Apply current matches filter if selected
   const displayGames = filterType === 'current' ? getCurrentMatches(filteredGames) : filteredGames;
