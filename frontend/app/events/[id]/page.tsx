@@ -95,17 +95,6 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     queryFn: async () => {
       // Only use pagination for 'all' view, fetch all games for filtered views
       const usePagination = filterType === 'all';
-      
-      console.log('Query params:', {
-        filterType,
-        division_id: filterType === 'division' && selectedDivision ? selectedDivision : undefined,
-        team_name: filterType === 'team' && teamFilter ? teamFilter : undefined,
-        field_name: filterType === 'location' && locationFilter ? locationFilter : undefined,
-        usePagination,
-        page: usePagination ? currentPage : undefined,
-        page_size: usePagination ? pageSize : undefined,
-      });
-      
       const response = await schedulesApi.getEventSchedule(eventId, {
         division_id: filterType === 'division' && selectedDivision ? selectedDivision : undefined,
         team_name: filterType === 'team' && teamFilter ? teamFilter : undefined,
@@ -113,9 +102,6 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         page: usePagination ? currentPage : undefined,
         page_size: usePagination ? pageSize : undefined,
       });
-      
-      console.log('Response:', { total_games: response.data.total_games, games_count: response.data.games.length });
-      
       return response.data;
     },
   });
@@ -124,9 +110,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const { data: teamsData } = useQuery({
     queryKey: ['teams', eventId],
     queryFn: async () => {
-      console.log('Fetching teams list...');
       const response = await schedulesApi.getTeams(eventId);
-      console.log('Teams loaded:', response.data.teams.length);
       return response.data.teams;
     },
     enabled: filterType === 'team',
@@ -136,9 +120,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const { data: locationsData } = useQuery({
     queryKey: ['locations', eventId],
     queryFn: async () => {
-      console.log('Fetching locations list...');
       const response = await schedulesApi.getLocations(eventId);
-      console.log('Locations loaded:', response.data.locations.length);
       return response.data.locations;
     },
     enabled: filterType === 'location',
