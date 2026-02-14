@@ -91,12 +91,12 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   };
 
   const { data: schedule, isLoading, error } = useQuery({
-    queryKey: ['schedule', eventId, selectedDivision, teamFilter, locationFilter, currentPage],
+    queryKey: ['schedule', eventId, selectedDivision, teamFilter, locationFilter, currentPage, filterType],
     queryFn: async () => {
       const response = await schedulesApi.getEventSchedule(eventId, {
-        division_id: selectedDivision,
-        team_name: teamFilter || undefined,
-        field_name: locationFilter || undefined,
+        division_id: filterType === 'division' ? selectedDivision : undefined,
+        team_name: filterType === 'team' ? (teamFilter || undefined) : undefined,
+        field_name: filterType === 'location' ? (locationFilter || undefined) : undefined,
         page: currentPage,
         page_size: pageSize,
       });

@@ -1,7 +1,7 @@
 """Database models for soccer schedule application"""
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, Enum as SQLEnum, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 import enum
@@ -138,7 +138,7 @@ class Game(Base):
     
     game_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     game_time: Mapped[Optional[str]] = mapped_column(String(20))
-    field_name: Mapped[Optional[str]] = mapped_column(String(100))
+    field_name: Mapped[Optional[str]] = mapped_column(String(100), index=True)
     field_location: Mapped[Optional[str]] = mapped_column(String(255))
     
     home_score: Mapped[Optional[int]] = mapped_column(Integer)
@@ -168,6 +168,15 @@ class Game(Base):
         "Team",
         foreign_keys=[away_team_id],
         back_populates="away_games",
+    )
+    
+    # Composite indexes for performance
+    __table_args__ = (
+        Index('ix_games_division_gotsport', 'division_id', 'gotsport_game_id'),
+        Index('ix_games_division_teams_datetime', 
+              'division_id', 'home_team_name', 'away_team_name', 'game_date', 'game_time'),
+        Index('ix_games_datetime', 'game_date', 'game_time'),
+        Index('ix_games_field_date', 'field_name', 'game_date'),
     )
 
 
