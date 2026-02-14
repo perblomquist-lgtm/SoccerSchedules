@@ -96,9 +96,9 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
       // Only use pagination for 'all' view, fetch all games for filtered views
       const usePagination = filterType === 'all';
       const response = await schedulesApi.getEventSchedule(eventId, {
-        division_id: filterType === 'division' ? selectedDivision : undefined,
-        team_name: filterType === 'team' ? (teamFilter || undefined) : undefined,
-        field_name: filterType === 'location' ? (locationFilter || undefined) : undefined,
+        division_id: filterType === 'division' && selectedDivision ? selectedDivision : undefined,
+        team_name: filterType === 'team' && teamFilter ? teamFilter : undefined,
+        field_name: filterType === 'location' && locationFilter ? locationFilter : undefined,
         page: usePagination ? currentPage : undefined,
         page_size: usePagination ? pageSize : undefined,
       });
