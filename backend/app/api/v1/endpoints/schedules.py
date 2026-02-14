@@ -95,8 +95,8 @@ async def get_event_schedule(
     field_name: Optional[str] = Query(None, description="Filter by field name"),
     team_name: Optional[str] = Query(None, description="Filter by team name (home or away)"),
     status: Optional[str] = Query(None, description="Filter by game status"),
-    page: int = Query(1, ge=1, description="Page number (starts at 1)"),
-    page_size: int = Query(100, ge=1, le=500, description="Games per page (max 500)"),
+    page: Optional[int] = Query(None, ge=1, description="Page number (starts at 1). If not provided, returns all results."),
+    page_size: Optional[int] = Query(None, ge=1, le=500, description="Games per page (max 500). If not provided, returns all results."),
     db: AsyncSession = Depends(get_db),
 ):
     """Get schedule for an event with optional filters"""
@@ -154,9 +154,10 @@ async def get_event_schedule(
     count_query = select(sql_func.count()).select_from(query.subquery())
     total_games = await db.scalar(count_query)
     
-    # Apply pagination
-    offset = (page - 1) * page_size
-    query = query.offset(offset).limit(page_size)
+    # Apply pagination only if page and page_size are provided
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        query = query.offset(offset).limit(page_size)
     
     # Execute query
     games_result = await db.execute(query)
