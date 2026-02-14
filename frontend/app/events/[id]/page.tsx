@@ -91,10 +91,12 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   };
 
   const { data: schedule, isLoading, error } = useQuery({
-    queryKey: ['schedule', eventId, selectedDivision, currentPage],
+    queryKey: ['schedule', eventId, selectedDivision, teamFilter, locationFilter, currentPage],
     queryFn: async () => {
       const response = await schedulesApi.getEventSchedule(eventId, {
         division_id: selectedDivision,
+        team_name: teamFilter || undefined,
+        field_name: locationFilter || undefined,
         page: currentPage,
         page_size: pageSize,
       });
@@ -261,6 +263,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     setTeamFilter(teamName);
     setSelectedDivision(undefined);
     setLocationFilter('');
+    setCurrentPage(1);
   };
 
   // Handle clicking on a location in the table
@@ -269,6 +272,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     setLocationFilter(location);
     setSelectedDivision(undefined);
     setTeamFilter('');
+    setCurrentPage(1);
   };
 
   // Handle clicking on a division in the table
@@ -277,6 +281,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     setSelectedDivision(divisionId);
     setTeamFilter('');
     setLocationFilter('');
+    setCurrentPage(1);
   };
 
   if (isLoading) {
@@ -496,7 +501,10 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               <select
                 className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-md text-sm bg-white"
                 value={selectedDivision || ''}
-                onChange={(e) => setSelectedDivision(e.target.value ? parseInt(e.target.value) : undefined)}
+                onChange={(e) => {
+                  setSelectedDivision(e.target.value ? parseInt(e.target.value) : undefined);
+                  setCurrentPage(1);
+                }}
               >
                 <option value="">Select division...</option>
                 {schedule.divisions.map((div) => (
@@ -512,7 +520,10 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               <select
                 className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-md text-sm bg-white"
                 value={teamFilter}
-                onChange={(e) => setTeamFilter(e.target.value)}
+                onChange={(e) => {
+                  setTeamFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
               >
                 <option value="">All Teams</option>
                 {allTeams.map((team) => (
@@ -528,7 +539,10 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               <select
                 className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-md text-sm bg-white"
                 value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
+                onChange={(e) => {
+                  setLocationFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
               >
                 <option value="">All Locations</option>
                 {allLocations.map((location) => (
