@@ -13,7 +13,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const [selectedDivision, setSelectedDivision] = useState<number | undefined>();
   const [teamFilter, setTeamFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
-  const [filterType, setFilterType] = useState<FilterType>('division');
+  const [filterType, setFilterType] = useState<FilterType>('all');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [favoriteTeams, setFavoriteTeams] = useState<string[]>([]);
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
