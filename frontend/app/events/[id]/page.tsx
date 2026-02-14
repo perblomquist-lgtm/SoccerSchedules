@@ -95,6 +95,17 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     queryFn: async () => {
       // Only use pagination for 'all' view, fetch all games for filtered views
       const usePagination = filterType === 'all';
+      
+      console.log('Query params:', {
+        filterType,
+        division_id: filterType === 'division' && selectedDivision ? selectedDivision : undefined,
+        team_name: filterType === 'team' && teamFilter ? teamFilter : undefined,
+        field_name: filterType === 'location' && locationFilter ? locationFilter : undefined,
+        usePagination,
+        page: usePagination ? currentPage : undefined,
+        page_size: usePagination ? pageSize : undefined,
+      });
+      
       const response = await schedulesApi.getEventSchedule(eventId, {
         division_id: filterType === 'division' && selectedDivision ? selectedDivision : undefined,
         team_name: filterType === 'team' && teamFilter ? teamFilter : undefined,
@@ -102,6 +113,9 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         page: usePagination ? currentPage : undefined,
         page_size: usePagination ? pageSize : undefined,
       });
+      
+      console.log('Response:', { total_games: response.data.total_games, games_count: response.data.games.length });
+      
       return response.data;
     },
   });
