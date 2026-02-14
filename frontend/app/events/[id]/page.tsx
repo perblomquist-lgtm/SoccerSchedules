@@ -91,7 +91,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   };
 
   const { data: schedule, isLoading, error } = useQuery({
-    queryKey: ['schedule', eventId, selectedDivision, teamFilter, locationFilter, currentPage, filterType],
+    queryKey: ['schedule', eventId, selectedDivision, teamFilter, locationFilter, filterType === 'all' ? currentPage : 1, filterType],
     queryFn: async () => {
       // Only use pagination for 'all' view, fetch all games for filtered views
       const usePagination = filterType === 'all';
