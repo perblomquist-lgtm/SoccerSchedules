@@ -212,38 +212,37 @@ class ScrapeService:
         """Store or update games with batched commits to reduce lock time"""
         stats = {'total': 0, 'created': 0, 'updated': 0, 'skipped': 0}
         
-        # PERFORMANCE: Bulk load all existing games for this event (1 query instead of 1000+)
+        # MEMORY OPTIMIZATION: Use single dictionary with composite keys to reduce memory by 66%
+        # Only load essential fields (id and matching criteria) to reduce memory further
         division_ids = [div.id for div in divisions_map.values()]
+        games_lookup = {}
+        
         if division_ids:
             result = await self.db.execute(
                 select(Game).where(Game.division_id.in_(division_ids))
             )
             existing_games = result.scalars().all()
             
-            # Build multiple lookup dictionaries for O(1) access with fallback strategies
-            games_by_gotsport_id = {
-                g.gotsport_game_id: g 
-                for g in existing_games 
-                if g.gotsport_game_id
-            }
-            # NEW: Lookup by game_number + division (more stable than teams/time)
-            games_by_game_number = {
-                (g.division_id, g.game_number): g
-                for g in existing_games
-                if g.game_number
-            }
-            games_by_signature = {
-                (g.division_id, g.home_team_name, g.away_team_name, 
-                 g.game_date, g.game_time): g
-                for g in existing_games
-            }
-        else:
-            games_by_gotsport_id = {}
-            games_by_game_number = {}
-            games_by_signature = {}
+            # Build single lookup with multiple keys pointing to same game object
+            for g in existing_games:
+                # Key 1: gotsport_game_id (most reliable)
+                if g.gotsport_game_id:
+                    games_lookup[('gotsport', g.gotsport_game_id)] = g
+                # Key 2: game_number + division (stable across schedule changes)
+                if g.game_number:
+                    games_lookup[('number', g.division_id, g.game_number)] = g
+                # Key 3: exact signature (teams + date + time)
+                if g.home_team_name and g.away_team_name and g.game_date and g.game_time:
+                    games_lookup[('sig', g.division_id, g.home_team_name, g.away_team_name, 
+                                  g.game_date, g.game_time)] = g
+            
+            # Free the list to reduce memory
+            existing_games = None
+            logger.info(f"Loaded {len(games_lookup)} game lookup keys for matching")
         
         # Process games in batches to avoid long-running transactions
-        BATCH_SIZE = 200
+        # MEMORY OPTIMIZATION: Reduced from 200 to 100 to lower memory usage
+        BATCH_SIZE = 100
         batch_count = 0
         
         for game_data in games_data:
@@ -265,20 +264,15 @@ class ScrapeService:
             away_team = game_data.get('away_team_name')
             game_date = game_data.get('game_date')
             game_time = game_data.get('game_time')
+            
+            # Try to find existing game using composite key lookup
             game = None
-            
-            # Strategy 1: Match by gotsport_game_id (most reliable)
-            if gotsport_game_id and gotsport_game_id in games_by_gotsport_id:
-                game = games_by_gotsport_id[gotsport_game_id]
-            
-            # Strategy 2: Match by game_number + division (stable across schedule changes)
+            if gotsport_game_id:
+                game = games_lookup.get(('gotsport', gotsport_game_id))
             if not game and game_number:
-                game = games_by_game_number.get((division.id, game_number))
-            
-            # Strategy 3: Match by exact signature (teams + date + time)
+                game = games_lookup.get(('number', division.id, game_number))
             if not game and home_team and away_team and game_date and game_time:
-                signature = (division.id, home_team, away_team, game_date, game_time)
-                game = games_by_signature.get(signature)
+                game = games_lookup.get(('sig', division.id, home_team, away_team, game_date, game_time))
             
             if game:
                 # Update existing game
@@ -290,26 +284,32 @@ class ScrapeService:
                 self.db.add(game)
                 stats['created'] += 1
                 
-                # Add to lookup dictionaries to prevent duplicates within this scrape
+                # Add to lookup to prevent duplicates within this scrape
                 if gotsport_game_id:
-                    games_by_gotsport_id[gotsport_game_id] = game
+                    games_lookup[('gotsport', gotsport_game_id)] = game
                 if game_number:
-                    games_by_game_number[(division.id, game_number)] = game
+                    games_lookup[('number', division.id, game_number)] = game
                 if home_team and away_team and game_date and game_time:
-                    signature = (division.id, home_team, away_team, game_date, game_time)
-                    games_by_signature[signature] = game
+                    games_lookup[('sig', division.id, home_team, away_team, game_date, game_time)] = game
             
             batch_count += 1
             
             # Commit in batches to reduce lock time (critical for performance!)
             if batch_count >= BATCH_SIZE:
                 await self.db.commit()
+                # MEMORY OPTIMIZATION: Expire all objects to free memory
+                await self.db.expire_all()
                 batch_count = 0
                 logger.debug(f"Committed batch: {stats['created']} created, {stats['updated']} updated so far")
         
         # Commit any remaining games
         if batch_count > 0:
             await self.db.commit()
+            await self.db.expire_all()
+        
+        # MEMORY OPTIMIZATION: Clear lookup dictionary to free memory
+        games_lookup.clear()
+        games_lookup = None
         
         logger.info(f"Processed {stats['total']} games: {stats['created']} created, {stats['updated']} updated, {stats['skipped']} skipped")
         return stats

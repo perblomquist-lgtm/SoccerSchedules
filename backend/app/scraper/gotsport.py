@@ -36,6 +36,7 @@ class GotsportScraper:
     async def start(self):
         """Start the browser instance"""
         playwright = await async_playwright().start()
+        # MEMORY OPTIMIZATION: Add flags to reduce memory consumption
         self.browser = await playwright.chromium.launch(
             headless=True,
             args=[
@@ -43,9 +44,18 @@ class GotsportScraper:
                 '--disable-setuid-sandbox',
                 '--disable-blink-features=AutomationControlled',
                 '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--single-process',  # Use single process to reduce memory
+                '--no-zygote',  # Don't use zygote process
+                '--disable-background-networking',
+                '--disable-default-apps',
+                '--disable-sync',
             ]
         )
-        logger.info("Playwright browser started")
+        logger.info("Playwright browser started with memory optimizations")
     
     async def stop(self):
         """Stop the browser instance"""
@@ -130,7 +140,7 @@ class GotsportScraper:
     
     async def _attempt_scrape(self, event_url: str, event_id: str) -> Dict[str, Any]:
         """Single scrape attempt"""
-        # Clear previous API responses
+        # Clear previous API responses to free memory
         self.api_responses = {}
         
         # Create new page with stealth settings
@@ -222,6 +232,65 @@ class GotsportScraper:
                 print(f"[SCRAPER] Error extracting event name: {e}")
                 logger.error(f"Error extracting event name: {e}", exc_info=True)
             
+            # Extract tournament dates from the HTML
+            start_date = None
+            end_date = None
+            try:
+                content = await page.content()
+                date_soup = BeautifulSoup(content, 'html.parser')
+                
+                # Method 1: Look for date range text patterns like "Feb 13-15, 2026"
+                text = date_soup.get_text()
+                import re
+                date_patterns = [
+                    r'(\w+\s+\d+)\s*-\s*(\d+),?\s+(\d{4})',  # "Feb 13-15, 2026"
+                    r'(\w+\s+\d+),?\s+(\d{4})\s*-\s*(\w+\s+\d+),?\s+(\d{4})',  # "Feb 13, 2026 - Feb 15, 2026"
+                ]
+                for pattern in date_patterns:
+                    match = re.search(pattern, text)
+                    if match:
+                        groups = match.groups()
+                        if len(groups) == 3:  # "Feb 13-15, 2026"
+                            month_day_start, day_end, year = groups
+                            try:
+                                # Parse start date
+                                start_date = self._parse_date(f"{month_day_start}, {year}")
+                                # Parse end date (use same month)
+                                month_parts = month_day_start.split()
+                                if len(month_parts) == 2:
+                                    month = month_parts[0]
+                                    end_date = self._parse_date(f"{month} {day_end}, {year}")
+                                print(f"[SCRAPER] Extracted dates from pattern: {start_date} to {end_date}")
+                                logger.info(f"Extracted tournament dates: {start_date} to {end_date}")
+                                break
+                            except Exception as e:
+                                print(f"[SCRAPER] Error parsing extracted dates: {e}")
+                                logger.warning(f"Error parsing extracted dates: {e}")
+                        elif len(groups) == 4:  # "Feb 13, 2026 - Feb 15, 2026"
+                            start_str, start_year, end_str, end_year = groups
+                            try:
+                                start_date = self._parse_date(f"{start_str}, {start_year}")
+                                end_date = self._parse_date(f"{end_str}, {end_year}")
+                                print(f"[SCRAPER] Extracted dates from pattern: {start_date} to {end_date}")
+                                logger.info(f"Extracted tournament dates: {start_date} to {end_date}")
+                                break
+                            except Exception as e:
+                                print(f"[SCRAPER] Error parsing extracted dates: {e}")
+                                logger.warning(f"Error parsing extracted dates: {e}")
+                
+                # Method 2: Look for meta tags or structured data
+                if not start_date:
+                    meta_start = date_soup.find('meta', {'property': 'event:start_date'})
+                    meta_end = date_soup.find('meta', {'property': 'event:end_date'})
+                    if meta_start:
+                        start_date = self._parse_date(meta_start.get('content'))
+                    if meta_end:
+                        end_date = self._parse_date(meta_end.get('content'))
+                
+            except Exception as e:
+                print(f"[SCRAPER] Error extracting tournament dates: {e}")
+                logger.warning(f"Error extracting tournament dates: {e}")
+            
             # Now scrape each division's schedule page
             all_schedules = []
             for division in divisions_data:
@@ -240,7 +309,9 @@ class GotsportScraper:
                 'event': {
                     'gotsport_event_id': event_id,
                     'url': event_url,
-                    'name': event_name or f"Event {event_id}"
+                    'name': event_name or f"Event {event_id}",
+                    'start_date': start_date,
+                    'end_date': end_date
                 },
                 'divisions': divisions_data,
                 'schedules': all_schedules,
