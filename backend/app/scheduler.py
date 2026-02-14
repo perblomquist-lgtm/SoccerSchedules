@@ -17,6 +17,30 @@ from app.services.scrape_service import ScrapeService
 logger = logging.getLogger(__name__)
 
 
+def normalize_to_datetime_utc(date_or_datetime, end_of_day: bool = False) -> datetime:
+    """
+    Convert a date or datetime object to timezone-aware datetime in UTC.
+    
+    Args:
+        date_or_datetime: date or datetime object to convert
+        end_of_day: If True and input is a date, return end of day (23:59:59)
+    
+    Returns:
+        datetime object in UTC timezone
+    """
+    if isinstance(date_or_datetime, datetime):
+        # It's already a datetime
+        if date_or_datetime.tzinfo is None:
+            return date_or_datetime.replace(tzinfo=timezone.utc)
+        return date_or_datetime
+    else:
+        # It's a date object, convert to datetime
+        if end_of_day:
+            return datetime.combine(date_or_datetime, datetime.max.time(), tzinfo=timezone.utc)
+        else:
+            return datetime.combine(date_or_datetime, datetime.min.time(), tzinfo=timezone.utc)
+
+
 class SmartScheduler:
     """
     Smart scheduler that adjusts scraping frequency based on tournament timing:
@@ -111,24 +135,9 @@ class SmartScheduler:
         
         now = datetime.now(timezone.utc)
         
-        # Convert date objects to datetime objects at midnight UTC
-        start_date = event.start_date
-        if isinstance(start_date, datetime):
-            # It's already a datetime
-            if start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=timezone.utc)
-        else:
-            # It's a date object, convert to datetime at midnight UTC
-            start_date = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-        
-        end_date = event.end_date
-        if isinstance(end_date, datetime):
-            # It's already a datetime
-            if end_date.tzinfo is None:
-                end_date = end_date.replace(tzinfo=timezone.utc)
-        else:
-            # It's a date object, convert to datetime at end of day UTC (23:59:59)
-            end_date = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+        # Convert dates to datetime objects in UTC using helper
+        start_date = normalize_to_datetime_utc(event.start_date)
+        end_date = normalize_to_datetime_utc(event.end_date, end_of_day=True)
         
         # Calculate day before tournament starts
         day_before_start = start_date - timedelta(days=1)

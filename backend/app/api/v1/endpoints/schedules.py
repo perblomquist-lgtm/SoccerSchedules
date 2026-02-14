@@ -18,6 +18,74 @@ from app.schemas.schemas import (
 router = APIRouter()
 
 
+@router.get("/{event_id}/teams")
+async def get_event_teams(
+    event_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get unique list of teams for an event"""
+    from sqlalchemy import union
+    
+    # Get event
+    result = await db.execute(
+        select(Event).where(Event.id == event_id)
+    )
+    event = result.scalar_one_or_none()
+    
+    if not event:
+        raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+    
+    # Get unique home teams
+    home_teams = select(Game.home_team_name.label('team_name')).join(Division).where(
+        Division.event_id == event_id,
+        Game.home_team_name.isnot(None)
+    )
+    
+    # Get unique away teams
+    away_teams = select(Game.away_team_name.label('team_name')).join(Division).where(
+        Division.event_id == event_id,
+        Game.away_team_name.isnot(None)
+    )
+    
+    # Union and get unique sorted list
+    teams_query = union(home_teams, away_teams).order_by('team_name')
+    teams_result = await db.execute(teams_query)
+    teams = [row[0] for row in teams_result]
+    
+    return {"teams": teams}
+
+
+@router.get("/{event_id}/locations")
+async def get_event_locations(
+    event_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get unique list of locations/fields for an event"""
+    # Get event
+    result = await db.execute(
+        select(Event).where(Event.id == event_id)
+    )
+    event = result.scalar_one_or_none()
+    
+    if not event:
+        raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+    
+    # Get unique field names
+    locations_result = await db.execute(
+        select(Game.field_name)
+        .join(Division)
+        .where(
+            Division.event_id == event_id,
+            Game.field_name.isnot(None)
+        )
+        .distinct()
+        .order_by(Game.field_name)
+    )
+    locations = [row[0] for row in locations_result]
+    
+    return {"locations": locations}
+
+
 @router.get("/{event_id}", response_model=ScheduleResponse)
 async def get_event_schedule(
     event_id: int,
@@ -27,6 +95,8 @@ async def get_event_schedule(
     field_name: Optional[str] = Query(None, description="Filter by field name"),
     team_name: Optional[str] = Query(None, description="Filter by team name (home or away)"),
     status: Optional[str] = Query(None, description="Filter by game status"),
+    page: int = Query(1, ge=1, description="Page number (starts at 1)"),
+    page_size: int = Query(100, ge=1, le=500, description="Games per page (max 500)"),
     db: AsyncSession = Depends(get_db),
 ):
     """Get schedule for an event with optional filters"""
@@ -38,12 +108,6 @@ async def get_event_schedule(
     
     if not event:
         raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
-    
-    # Get divisions
-    divisions_result = await db.execute(
-        select(Division).where(Division.event_id == event_id).order_by(Division.name)
-    )
-    divisions = divisions_result.scalars().all()
     
     # Build games query
     query = (
@@ -79,12 +143,22 @@ async def get_event_schedule(
     # Order by date and time
     query = query.order_by(Game.game_date.asc(), Game.game_time.asc())
     
+    # Count total games for pagination
+    from sqlalchemy import func as sql_func
+    count_query = select(sql_func.count()).select_from(query.subquery())
+    total_games = await db.scalar(count_query)
+    
+    # Apply pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+    
     # Execute query
     games_result = await db.execute(query)
     games_with_divisions = games_result.all()
     
     # Build response
     games_response = []
+    divisions_dict = {}
     for game, division in games_with_divisions:
         game_detail = GameDetailResponse(
             **game.__dict__,
@@ -92,12 +166,15 @@ async def get_event_schedule(
             event_name=event.name,
         )
         games_response.append(game_detail)
+        # Collect unique divisions from the games result
+        if division.id not in divisions_dict:
+            divisions_dict[division.id] = division
     
     return ScheduleResponse(
         event=EventResponse(**event.__dict__),
-        divisions=[DivisionResponse(**div.__dict__) for div in divisions],
+        divisions=[DivisionResponse(**div.__dict__) for div in divisions_dict.values()],
         games=games_response,
-        total_games=len(games_response),
+        total_games=total_games or 0,
     )
 
 

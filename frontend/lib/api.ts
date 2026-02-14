@@ -86,7 +86,15 @@ export const schedulesApi = {
     field_name?: string;
     team_name?: string;
     status?: string;
+    page?: number;
+    page_size?: number;
   }) => apiClient.get<Schedule>(`/schedules/${eventId}`, { params }),
+  
+  getTeams: (eventId: number) => 
+    apiClient.get<{ teams: string[] }>(`/schedules/${eventId}/teams`),
+  
+  getLocations: (eventId: number) => 
+    apiClient.get<{ locations: string[] }>(`/schedules/${eventId}/locations`),
 };
 
 export const scrapingApi = {

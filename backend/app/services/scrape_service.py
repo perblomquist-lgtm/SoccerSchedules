@@ -82,6 +82,15 @@ class ScrapeService:
                 # Store schedules/games
                 stats = await self._store_games(event, divisions_map, scraped_data.get('schedules', []))
                 
+                # Clean up any duplicates that might have been created
+                duplicates_removed = await self._cleanup_duplicate_games(event)
+                if duplicates_removed > 0:
+                    logger.info(f"Removed {duplicates_removed} duplicate games")
+                    stats['duplicates_removed'] = duplicates_removed
+                
+                # Update event start/end dates based on game dates
+                await self._update_event_dates_from_games(event)
+                
                 # Update scrape log with success
                 scrape_log.status = ScrapeStatus.SUCCESS
                 scrape_log.scrape_completed_at = datetime.now(timezone.utc)
@@ -137,7 +146,7 @@ class ScrapeService:
                 status='active',
             )
             self.db.add(event)
-            await self.db.flush()  # Get the ID
+            await self.db.commit()  # Commit immediately to release locks
             logger.info(f"Created new event: {event.name}")
         else:
             # Update existing event
@@ -151,6 +160,7 @@ class ScrapeService:
                 event.end_date = event_data['end_date']
             event.url = event_url
             event.updated_at = datetime.now(timezone.utc)
+            await self.db.commit()  # Commit updates immediately
             logger.info(f"Updated existing event: {event.name}")
         
         return event
@@ -190,16 +200,51 @@ class ScrapeService:
                     gotsport_division_id=div_data.get('gotsport_division_id'),
                 )
                 self.db.add(division)
-                await self.db.flush()
             
             divisions_map[div_name] = division
         
+        # Commit all divisions at once to release locks
+        await self.db.commit()
         logger.info(f"Processed {len(divisions_map)} divisions for event {event.name}")
         return divisions_map
     
     async def _store_games(self, event: Event, divisions_map: Dict[str, Division], games_data: List[Dict]) -> Dict[str, int]:
-        """Store or update games"""
+        """Store or update games with batched commits to reduce lock time"""
         stats = {'total': 0, 'created': 0, 'updated': 0, 'skipped': 0}
+        
+        # PERFORMANCE: Bulk load all existing games for this event (1 query instead of 1000+)
+        division_ids = [div.id for div in divisions_map.values()]
+        if division_ids:
+            result = await self.db.execute(
+                select(Game).where(Game.division_id.in_(division_ids))
+            )
+            existing_games = result.scalars().all()
+            
+            # Build multiple lookup dictionaries for O(1) access with fallback strategies
+            games_by_gotsport_id = {
+                g.gotsport_game_id: g 
+                for g in existing_games 
+                if g.gotsport_game_id
+            }
+            # NEW: Lookup by game_number + division (more stable than teams/time)
+            games_by_game_number = {
+                (g.division_id, g.game_number): g
+                for g in existing_games
+                if g.game_number
+            }
+            games_by_signature = {
+                (g.division_id, g.home_team_name, g.away_team_name, 
+                 g.game_date, g.game_time): g
+                for g in existing_games
+            }
+        else:
+            games_by_gotsport_id = {}
+            games_by_game_number = {}
+            games_by_signature = {}
+        
+        # Process games in batches to avoid long-running transactions
+        BATCH_SIZE = 200
+        batch_count = 0
         
         for game_data in games_data:
             stats['total'] += 1
@@ -208,53 +253,32 @@ class ScrapeService:
             div_name = game_data.get('division_name')
             division = divisions_map.get(div_name)
             
-            if not division and div_name:
-                # Create division on the fly if it doesn't exist
-                division = Division(
-                    event_id=event.id,
-                    name=div_name,
-                )
-                self.db.add(division)
-                await self.db.flush()
-                divisions_map[div_name] = division
-            
             if not division:
                 logger.warning(f"No division found for game: {game_data}")
                 stats['skipped'] += 1
                 continue
             
-            # Check if game exists
+            # Check if game exists using multiple strategies to prevent duplicates
             gotsport_game_id = game_data.get('gotsport_game_id')
+            game_number = game_data.get('game_number')
+            home_team = game_data.get('home_team_name')
+            away_team = game_data.get('away_team_name')
+            game_date = game_data.get('game_date')
+            game_time = game_data.get('game_time')
             game = None
             
-            # First try to find by gotsport_game_id if available
-            if gotsport_game_id:
-                result = await self.db.execute(
-                    select(Game).where(
-                        Game.division_id == division.id,
-                        Game.gotsport_game_id == gotsport_game_id
-                    )
-                )
-                game = result.scalar_one_or_none()
+            # Strategy 1: Match by gotsport_game_id (most reliable)
+            if gotsport_game_id and gotsport_game_id in games_by_gotsport_id:
+                game = games_by_gotsport_id[gotsport_game_id]
             
-            # If not found by ID, try to find by unique attributes (division, teams, date, time)
-            if not game:
-                home_team = game_data.get('home_team_name')
-                away_team = game_data.get('away_team_name')
-                game_date = game_data.get('game_date')
-                game_time = game_data.get('game_time')
-                
-                if home_team and away_team and game_date and game_time:
-                    result = await self.db.execute(
-                        select(Game).where(
-                            Game.division_id == division.id,
-                            Game.home_team_name == home_team,
-                            Game.away_team_name == away_team,
-                            Game.game_date == game_date,
-                            Game.game_time == game_time
-                        )
-                    )
-                    game = result.scalar_one_or_none()
+            # Strategy 2: Match by game_number + division (stable across schedule changes)
+            if not game and game_number:
+                game = games_by_game_number.get((division.id, game_number))
+            
+            # Strategy 3: Match by exact signature (teams + date + time)
+            if not game and home_team and away_team and game_date and game_time:
+                signature = (division.id, home_team, away_team, game_date, game_time)
+                game = games_by_signature.get(signature)
             
             if game:
                 # Update existing game
@@ -265,8 +289,28 @@ class ScrapeService:
                 game = self._create_game_from_data(division.id, game_data)
                 self.db.add(game)
                 stats['created'] += 1
+                
+                # Add to lookup dictionaries to prevent duplicates within this scrape
+                if gotsport_game_id:
+                    games_by_gotsport_id[gotsport_game_id] = game
+                if game_number:
+                    games_by_game_number[(division.id, game_number)] = game
+                if home_team and away_team and game_date and game_time:
+                    signature = (division.id, home_team, away_team, game_date, game_time)
+                    games_by_signature[signature] = game
+            
+            batch_count += 1
+            
+            # Commit in batches to reduce lock time (critical for performance!)
+            if batch_count >= BATCH_SIZE:
+                await self.db.commit()
+                batch_count = 0
+                logger.debug(f"Committed batch: {stats['created']} created, {stats['updated']} updated so far")
         
-        await self.db.flush()
+        # Commit any remaining games
+        if batch_count > 0:
+            await self.db.commit()
+        
         logger.info(f"Processed {stats['total']} games: {stats['created']} created, {stats['updated']} updated, {stats['skipped']} skipped")
         return stats
     
@@ -310,3 +354,87 @@ class ScrapeService:
         if game_data.get('status'):
             game.status = game_data['status']
         game.updated_at = datetime.now(timezone.utc)
+    
+    async def _update_event_dates_from_games(self, event: Event):
+        """Update event start_date and end_date based on the earliest and latest game dates"""
+        try:
+            from sqlalchemy import func
+            
+            # Skip if this isn't the first scrape and dates are already set
+            # (dates rarely change after initial scrape)
+            if event.start_date and event.end_date and event.last_scraped_at:
+                logger.debug(f"Event {event.name} already has dates, skipping update")
+                return
+            
+            logger.info(f"Starting date update for event {event.name} (ID: {event.id})")
+            
+            # Query for min and max game_date for this event's games
+            result = await self.db.execute(
+                select(
+                    func.min(Game.game_date),
+                    func.max(Game.game_date)
+                ).join(Division).where(
+                    Division.event_id == event.id,
+                    Game.game_date.isnot(None)
+                )
+            )
+            
+            min_date, max_date = result.one()
+            
+            logger.info(f"Query result - min_date: {min_date}, max_date: {max_date}")
+            
+            if min_date and max_date:
+                # Only update if dates are actually different
+                if event.start_date != min_date or event.end_date != max_date:
+                    event.start_date = min_date
+                    event.end_date = max_date
+                    await self.db.commit()  # Commit immediately to release locks
+                    logger.info(f"✅ Updated event {event.name} dates: {min_date.date()} to {max_date.date()}")
+                else:
+                    logger.debug(f"Event {event.name} dates unchanged, skipping commit")
+            else:
+                logger.warning(f"⚠️ No game dates found for event {event.name}")
+        except Exception as e:
+            logger.error(f"❌ Error updating event dates: {e}", exc_info=True)
+    
+    async def _cleanup_duplicate_games(self, event: Event) -> int:
+        """
+        Detect and remove duplicate games after scraping using window functions.
+        Keeps the most recently updated game when duplicates are found.
+        Single SQL query for better performance.
+        """
+        from sqlalchemy import text
+        
+        duplicates_removed = 0
+        
+        try:
+            # Use window functions to identify duplicates and delete all but the most recent
+            # This is much faster than the N-query approach
+            delete_query = text("""
+                WITH ranked_games AS (
+                    SELECT g.id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY g.division_id, g.home_team_name, g.away_team_name, g.game_date
+                               ORDER BY g.updated_at DESC, g.id DESC
+                           ) as rn
+                    FROM games g
+                    JOIN divisions d ON g.division_id = d.id
+                    WHERE d.event_id = :event_id
+                )
+                DELETE FROM games
+                WHERE id IN (
+                    SELECT id FROM ranked_games WHERE rn > 1
+                )
+            """)
+            
+            result = await self.db.execute(delete_query, {"event_id": event.id})
+            duplicates_removed = result.rowcount
+            
+            if duplicates_removed > 0:
+                await self.db.commit()
+                logger.info(f"Cleaned up {duplicates_removed} duplicate games for event {event.name}")
+            
+        except Exception as e:
+            logger.error(f"Error cleaning up duplicates: {e}", exc_info=True)
+        
+        return duplicates_removed

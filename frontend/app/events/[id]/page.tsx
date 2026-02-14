@@ -19,6 +19,8 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [myClubName, setMyClubName] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   // Fetch all events for the dropdown
   const { data: allEvents } = useQuery({
@@ -89,30 +91,40 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   };
 
   const { data: schedule, isLoading, error } = useQuery({
-    queryKey: ['schedule', eventId, selectedDivision],
+    queryKey: ['schedule', eventId, selectedDivision, currentPage],
     queryFn: async () => {
       const response = await schedulesApi.getEventSchedule(eventId, {
         division_id: selectedDivision,
+        page: currentPage,
+        page_size: pageSize,
       });
       return response.data;
     },
   });
 
-  // PERFORMANCE: Memoize team/location lists to prevent re-computing on every render
-  const allTeams = useMemo(() => {
-    if (!schedule) return [];
-    return Array.from(new Set([
-      ...schedule.games.map(g => g.home_team_name).filter((name): name is string => Boolean(name)),
-      ...schedule.games.map(g => g.away_team_name).filter((name): name is string => Boolean(name))
-    ])).sort();
-  }, [schedule?.games]);
+  // Fetch teams list from backend
+  const { data: teamsData } = useQuery({
+    queryKey: ['teams', eventId],
+    queryFn: async () => {
+      const response = await schedulesApi.getTeams(eventId);
+      return response.data.teams;
+    },
+    enabled: filterType === 'team',
+  });
 
-  const allLocations = useMemo(() => {
-    if (!schedule) return [];
-    return Array.from(new Set(
-      schedule.games.map(g => g.field_name).filter((name): name is string => Boolean(name))
-    )).sort();
-  }, [schedule?.games]);
+  // Fetch locations list from backend
+  const { data: locationsData } = useQuery({
+    queryKey: ['locations', eventId],
+    queryFn: async () => {
+      const response = await schedulesApi.getLocations(eventId);
+      return response.data.locations;
+    },
+    enabled: filterType === 'location',
+  });
+
+  // PERFORMANCE: Use backend-provided lists instead of computing from all games
+  const allTeams = teamsData || [];
+  const allLocations = locationsData || [];
 
   // Helper function to parse time strings like "8:00 AM" to comparable numbers
   const parseTime = (timeStr: string | null) => {
@@ -193,6 +205,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   }, []); // Empty deps - function logic doesn't change
 
   // PERFORMANCE: Memoize filtering and sorting to prevent re-computing on every render
+  // Note: Pagination handled on backend, but we still filter client-side for current/favorites/myclub
   const filteredGames = useMemo(() => {
     if (!schedule?.games) return [];
     
@@ -201,12 +214,6 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         if (filterType === 'current') {
           // For current matches, we'll filter separately
           return true;
-        }
-        if (filterType === 'location' && locationFilter) {
-          return game.field_name === locationFilter;
-        }
-        if (filterType === 'team' && teamFilter) {
-          return (game.home_team_name === teamFilter) || (game.away_team_name === teamFilter);
         }
         if (filterType === 'favorites') {
           return (game.home_team_name && favoriteTeams.includes(game.home_team_name)) ||
@@ -233,7 +240,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         const timeB = parseTime(b.game_time);
         return timeA - timeB;
       });
-  }, [schedule?.games, filterType, locationFilter, teamFilter, favoriteTeams, myClubName]);
+  }, [schedule?.games, filterType, favoriteTeams, myClubName]);
 
   // Apply current matches filter if selected
   const displayGames = filterType === 'current' ? getCurrentMatches(filteredGames) : filteredGames;
@@ -245,6 +252,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
     setTeamFilter('');
     setLocationFilter('');
     setShowFilterMenu(false);
+    setCurrentPage(1); // Reset to page 1 when changing filters
   };
 
   // Handle clicking on a team name in the table
@@ -532,6 +540,54 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             )}
           </div>
         </div>
+
+        {/* Pagination Controls */}
+        {schedule && schedule.total_games > pageSize && (
+          <div className="bg-white rounded-lg shadow p-4 mb-6 flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, schedule.total_games)} of {schedule.total_games} games
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 border border-gray-300 rounded-md text-sm bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.ceil(schedule.total_games / pageSize) }, (_, i) => i + 1)
+                  .filter(page => {
+                    // Show first, last, current, and adjacent pages
+                    const totalPages = Math.ceil(schedule.total_games / pageSize);
+                    return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                  })
+                  .map((page, idx, arr) => (
+                    <div key={page} className="flex items-center gap-1">
+                      {idx > 0 && arr[idx - 1] !== page - 1 && <span className="text-gray-400">...</span>}
+                      <button
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1 border rounded-md text-sm ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(Math.ceil(schedule.total_games / pageSize), p + 1))}
+                disabled={currentPage >= Math.ceil(schedule.total_games / pageSize)}
+                className="px-3 py-1 border border-gray-300 rounded-md text-sm bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Games Table - Desktop */}
         <div className="hidden md:block bg-white rounded-lg shadow overflow-hidden">
