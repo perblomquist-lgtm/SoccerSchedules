@@ -102,6 +102,7 @@ class ScrapeService:
                 event.last_scraped_at = datetime.now(timezone.utc)
                 
                 self.db.add(scrape_log)
+                self.db.add(event)  # Explicitly add event to ensure last_scraped_at is persisted
                 await self.db.commit()
                 await self.db.refresh(event)
                 
