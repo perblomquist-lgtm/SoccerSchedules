@@ -298,15 +298,12 @@ class ScrapeService:
             # Commit in batches to reduce lock time (critical for performance!)
             if batch_count >= BATCH_SIZE:
                 await self.db.commit()
-                # MEMORY OPTIMIZATION: Expire all objects to free memory
-                self.db.expire_all()  # Not async - don't await
                 batch_count = 0
                 logger.debug(f"Committed batch: {stats['created']} created, {stats['updated']} updated so far")
         
         # Commit any remaining games
         if batch_count > 0:
             await self.db.commit()
-            self.db.expire_all()  # Not async - don't await
         
         # MEMORY OPTIMIZATION: Clear lookup dictionary to free memory
         games_lookup.clear()
