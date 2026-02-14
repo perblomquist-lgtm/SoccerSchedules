@@ -93,12 +93,14 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
   const { data: schedule, isLoading, error } = useQuery({
     queryKey: ['schedule', eventId, selectedDivision, teamFilter, locationFilter, currentPage, filterType],
     queryFn: async () => {
+      // Only use pagination for 'all' view, fetch all games for filtered views
+      const usePagination = filterType === 'all';
       const response = await schedulesApi.getEventSchedule(eventId, {
         division_id: filterType === 'division' ? selectedDivision : undefined,
         team_name: filterType === 'team' ? (teamFilter || undefined) : undefined,
         field_name: filterType === 'location' ? (locationFilter || undefined) : undefined,
-        page: currentPage,
-        page_size: pageSize,
+        page: usePagination ? currentPage : undefined,
+        page_size: usePagination ? pageSize : undefined,
       });
       return response.data;
     },
@@ -555,8 +557,8 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           </div>
         </div>
 
-        {/* Pagination Controls */}
-        {schedule && schedule.total_games > pageSize && (
+        {/* Pagination Controls - only show for 'all' view */}
+        {filterType === 'all' && schedule && schedule.total_games > pageSize && (
           <div className="bg-white rounded-lg shadow p-4 mb-6 flex items-center justify-between">
             <div className="text-sm text-gray-600">
               Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, schedule.total_games)} of {schedule.total_games} games
