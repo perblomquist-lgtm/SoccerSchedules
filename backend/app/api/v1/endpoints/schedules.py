@@ -109,6 +109,12 @@ async def get_event_schedule(
     if not event:
         raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
     
+    # Get ALL divisions for the event (not just from paginated games)
+    divisions_result = await db.execute(
+        select(Division).where(Division.event_id == event_id).order_by(Division.name)
+    )
+    all_divisions = divisions_result.scalars().all()
+    
     # Build games query
     query = (
         select(Game, Division)
@@ -158,7 +164,6 @@ async def get_event_schedule(
     
     # Build response
     games_response = []
-    divisions_dict = {}
     for game, division in games_with_divisions:
         game_detail = GameDetailResponse(
             **game.__dict__,
@@ -166,13 +171,10 @@ async def get_event_schedule(
             event_name=event.name,
         )
         games_response.append(game_detail)
-        # Collect unique divisions from the games result
-        if division.id not in divisions_dict:
-            divisions_dict[division.id] = division
     
     return ScheduleResponse(
         event=EventResponse(**event.__dict__),
-        divisions=[DivisionResponse(**div.__dict__) for div in divisions_dict.values()],
+        divisions=[DivisionResponse(**div.__dict__) for div in all_divisions],
         games=games_response,
         total_games=total_games or 0,
     )
