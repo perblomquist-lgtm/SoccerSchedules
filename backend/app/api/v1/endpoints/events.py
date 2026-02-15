@@ -328,7 +328,7 @@ async def get_division_seeding(
             winner_responses.append(SeedingTeam(
                 rank=rank,
                 team_name=team.team_name,
-                bracket=winner_data['bracket'],
+                bracket_name=winner_data['bracket'],
                 points=team.points,
                 goal_difference=team.goal_difference,
                 goals_for=team.goals_for,
@@ -348,7 +348,7 @@ async def get_division_seeding(
             remaining_responses.append(SeedingTeam(
                 rank=idx,
                 team_name=team.team_name,
-                bracket=remaining_data['bracket'],
+                bracket_name=remaining_data['bracket'],
                 points=team.points,
                 goal_difference=team.goal_difference,
                 goals_for=team.goals_for,
