@@ -373,13 +373,21 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
               )}
             </div>
             
-            {/* Right side - Admin button */}
-            <button
-              onClick={() => setShowAdminModal(true)}
-              className="px-3 sm:px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm whitespace-nowrap ml-2"
-            >
-              Admin
-            </button>
+            {/* Right side - Admin and Seeding buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => window.location.href = `/events/${eventId}/seeding`}
+                className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm whitespace-nowrap"
+              >
+                Seeding
+              </button>
+              <button
+                onClick={() => setShowAdminModal(true)}
+                className="px-3 sm:px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm whitespace-nowrap"
+              >
+                Admin
+              </button>
+            </div>
           </div>
         </div>
       </header>
