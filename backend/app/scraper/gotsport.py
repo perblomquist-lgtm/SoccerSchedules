@@ -944,16 +944,35 @@ class GotsportScraper:
                 
                 print(f"[SCRAPER] Found standings table with headers: {headers}")
                 
-                # Try to find the bracket name (look for heading above the table)
+                # Try to find the bracket name from the panel structure
                 bracket_name = "Unknown Bracket"
-                parent = table.find_parent()
-                if parent:
-                    # Look for a heading before the table
-                    for sibling in parent.find_all_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'strong']):
-                        text = sibling.get_text(strip=True)
-                        if 'bracket' in text.lower() or 'group' in text.lower() or 'pool' in text.lower():
-                            bracket_name = text
-                            break
+                
+                # First try to find the panel-collapse ancestor (GotSport uses Bootstrap panels)
+                panel_collapse = table.find_parent(class_='panel-collapse')
+                if panel_collapse and panel_collapse.get('id'):
+                    # Extract the panel ID (e.g., 'collapse-648115')
+                    panel_id = panel_collapse.get('id')
+                    # Find the corresponding panel-heading by ID pattern
+                    bracket_id = panel_id.replace('collapse-', 'bracket-')
+                    panel_heading = soup.find('div', id=bracket_id)
+                    if panel_heading:
+                        # Get the text from the anchor tag in panel-title
+                        panel_title = panel_heading.find(class_='panel-title')
+                        if panel_title:
+                            link = panel_title.find('a')
+                            if link:
+                                bracket_name = link.get_text(strip=True)
+                
+                # Fallback: Look for headings
+                if bracket_name == "Unknown Bracket":
+                    parent = table.find_parent()
+                    if parent:
+                        # Look for a heading before the table
+                        for sibling in parent.find_all_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'strong']):
+                            text = sibling.get_text(strip=True)
+                            if 'bracket' in text.lower() or 'group' in text.lower() or 'pool' in text.lower():
+                                bracket_name = text
+                                break
                 
                 print(f"[SCRAPER] Bracket name: {bracket_name}")
                 
