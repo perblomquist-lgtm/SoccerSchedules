@@ -358,7 +358,7 @@ class ScrapeService:
             game.status = game_data['status']
         game.updated_at = datetime.now(timezone.utc)
     
-    async def _store_bracket_standings(self, event: Event, divisions_map: Dict[str, int], standings_data: List[Dict]) -> Dict:
+    async def _store_bracket_standings(self, event: Event, divisions_map: Dict[str, Division], standings_data: List[Dict]) -> Dict:
         """Store or update bracket standings in the database"""
         stats = {'total': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
         
@@ -372,7 +372,9 @@ class ScrapeService:
         # Load existing standings for this event with error handling
         standings_lookup = {}
         try:
-            for division_id in divisions_map.values():
+            # Extract division IDs from Division objects
+            division_ids = [div.id for div in divisions_map.values()]
+            for division_id in division_ids:
                 try:
                     result = await self.db.execute(
                         select(BracketStanding).where(BracketStanding.division_id == division_id)
@@ -393,18 +395,19 @@ class ScrapeService:
             stats['total'] += 1
             
             try:
-                # Get division name and look up division_id
+                # Get division name and look up Division object
                 division_name = standing_data.get('division_name')
                 if not division_name:
                     stats['skipped'] += 1
                     continue
                 
-                division_id = divisions_map.get(division_name)
-                if not division_id:
+                division = divisions_map.get(division_name)
+                if not division:
                     stats['skipped'] += 1
                     logger.warning(f"Division not found for standing: {division_name}")
                     continue
                 
+                division_id = division.id  # Extract ID from Division object
                 bracket_name = standing_data.get('bracket_name', 'Unknown Bracket')
                 team_name = standing_data.get('team_name')
                 
