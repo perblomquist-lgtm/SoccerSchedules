@@ -281,9 +281,29 @@ async def get_division_seeding(
         )
     
     try:
+        # Deduplicate standings - keep the one with a real bracket name (not "Unknown Bracket")
+        # Group by team name and keep the best entry
+        team_standings = {}
+        for standing in standings:
+            team_name = standing.team_name
+            if team_name not in team_standings:
+                team_standings[team_name] = standing
+            else:
+                # If current entry has a real bracket name and existing doesn't, replace it
+                existing = team_standings[team_name]
+                if standing.bracket_name != "Unknown Bracket" and existing.bracket_name == "Unknown Bracket":
+                    team_standings[team_name] = standing
+                # If both have real bracket names or both are Unknown, keep the one with better stats
+                elif standing.points > existing.points or \
+                     (standing.points == existing.points and standing.goal_difference > existing.goal_difference):
+                    team_standings[team_name] = standing
+        
+        # Use deduplicated standings
+        deduplicated_standings = list(team_standings.values())
+        
         # Group standings by bracket and identify winners
         brackets = {}
-        for standing in standings:
+        for standing in deduplicated_standings:
             if standing.bracket_name not in brackets:
                 brackets[standing.bracket_name] = []
             brackets[standing.bracket_name].append(standing)
@@ -294,6 +314,14 @@ async def get_division_seeding(
         
         for bracket_name, bracket_teams in brackets.items():
             if bracket_teams:
+                # Sort teams within this bracket
+                bracket_teams.sort(key=lambda t: (
+                    -t.points,
+                    -t.goal_difference,
+                    -t.goals_for,
+                    t.goals_against,
+                    t.team_name
+                ))
                 # First team is the winner
                 winner = bracket_teams[0]
                 bracket_winners.append({
