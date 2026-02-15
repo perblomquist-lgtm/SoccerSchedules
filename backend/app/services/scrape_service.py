@@ -360,95 +360,128 @@ class ScrapeService:
     
     async def _store_bracket_standings(self, event: Event, divisions_map: Dict[str, int], standings_data: List[Dict]) -> Dict:
         """Store or update bracket standings in the database"""
-        stats = {'total': 0, 'created': 0, 'updated': 0, 'skipped': 0}
+        stats = {'total': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
         
         if not standings_data:
             return stats
         
-        BATCH_SIZE = 50  # Smaller batch for standings
+        BATCH_SIZE = 25  # Smaller batch size for better reliability
         
         logger.info(f"Processing {len(standings_data)} bracket standings")
         
-        # Load existing standings for this event
+        # Load existing standings for this event with error handling
         standings_lookup = {}
-        for division_id in divisions_map.values():
-            result = await self.db.execute(
-                select(BracketStanding).where(BracketStanding.division_id == division_id)
-            )
-            for standing in result.scalars():
-                key = (standing.division_id, standing.bracket_name, standing.team_name)
-                standings_lookup[key] = standing
+        try:
+            for division_id in divisions_map.values():
+                try:
+                    result = await self.db.execute(
+                        select(BracketStanding).where(BracketStanding.division_id == division_id)
+                    )
+                    for standing in result.scalars():
+                        key = (standing.division_id, standing.bracket_name, standing.team_name)
+                        standings_lookup[key] = standing
+                except Exception as e:
+                    logger.error(f"Error loading existing standings for division {division_id}: {e}")
+                    # Continue with other divisions
+                    continue
+        except Exception as e:
+            logger.error(f"Error loading existing standings: {e}")
+            # Continue with empty lookup - will create all as new
         
         batch_count = 0
-        for standing_data in standings_data:
+        for i, standing_data in enumerate(standings_data):
             stats['total'] += 1
             
-            # Get division name and look up division_id
-            division_name = standing_data.get('division_name')
-            if not division_name:
-                stats['skipped'] += 1
+            try:
+                # Get division name and look up division_id
+                division_name = standing_data.get('division_name')
+                if not division_name:
+                    stats['skipped'] += 1
+                    continue
+                
+                division_id = divisions_map.get(division_name)
+                if not division_id:
+                    stats['skipped'] += 1
+                    logger.warning(f"Division not found for standing: {division_name}")
+                    continue
+                
+                bracket_name = standing_data.get('bracket_name', 'Unknown Bracket')
+                team_name = standing_data.get('team_name')
+                
+                if not team_name:
+                    stats['skipped'] += 1
+                    continue
+                
+                # Check if this standing already exists
+                key = (division_id, bracket_name, team_name)
+                existing_standing = standings_lookup.get(key)
+                
+                if existing_standing:
+                    # Update existing
+                    existing_standing.played = standing_data.get('played', 0)
+                    existing_standing.wins = standing_data.get('wins', 0)
+                    existing_standing.draws = standing_data.get('draws', 0)
+                    existing_standing.losses = standing_data.get('losses', 0)
+                    existing_standing.goals_for = standing_data.get('goals_for', 0)
+                    existing_standing.goals_against = standing_data.get('goals_against', 0)
+                    existing_standing.goal_difference = standing_data.get('goal_difference', 0)
+                    existing_standing.points = standing_data.get('points', 0)
+                    existing_standing.updated_at = datetime.now(timezone.utc)
+                    stats['updated'] += 1
+                else:
+                    # Create new
+                    new_standing = BracketStanding(
+                        division_id=division_id,
+                        bracket_name=bracket_name,
+                        team_name=team_name,
+                        played=standing_data.get('played', 0),
+                        wins=standing_data.get('wins', 0),
+                        draws=standing_data.get('draws', 0),
+                        losses=standing_data.get('losses', 0),
+                        goals_for=standing_data.get('goals_for', 0),
+                        goals_against=standing_data.get('goals_against', 0),
+                        goal_difference=standing_data.get('goal_difference', 0),
+                        points=standing_data.get('points', 0),
+                    )
+                    self.db.add(new_standing)
+                    standings_lookup[key] = new_standing
+                    stats['created'] += 1
+                
+                batch_count += 1
+                
+                # Commit in batches
+                if batch_count >= BATCH_SIZE:
+                    try:
+                        await self.db.commit()
+                        logger.info(f"Committed batch of {batch_count} standings (processed {i+1}/{len(standings_data)})")
+                        batch_count = 0
+                    except Exception as e:
+                        logger.error(f"Error committing batch at standing {i+1}: {e}")
+                        await self.db.rollback()
+                        stats['errors'] += batch_count
+                        batch_count = 0
+                        # Continue processing remaining standings
+                        
+            except Exception as e:
+                logger.error(f"Error processing standing {i+1}: {e}")
+                stats['errors'] += 1
+                # Continue with next standing
                 continue
-            
-            division_id = divisions_map.get(division_name)
-            if not division_id:
-                stats['skipped'] += 1
-                logger.warning(f"Division not found for standing: {division_name}")
-                continue
-            
-            bracket_name = standing_data.get('bracket_name', 'Unknown Bracket')
-            team_name = standing_data.get('team_name')
-            
-            if not team_name:
-                stats['skipped'] += 1
-                continue
-            
-            # Check if this standing already exists
-            key = (division_id, bracket_name, team_name)
-            existing_standing = standings_lookup.get(key)
-            
-            if existing_standing:
-                # Update existing
-                existing_standing.played = standing_data.get('played', 0)
-                existing_standing.wins = standing_data.get('wins', 0)
-                existing_standing.draws = standing_data.get('draws', 0)
-                existing_standing.losses = standing_data.get('losses', 0)
-                existing_standing.goals_for = standing_data.get('goals_for', 0)
-                existing_standing.goals_against = standing_data.get('goals_against', 0)
-                existing_standing.goal_difference = standing_data.get('goal_difference', 0)
-                existing_standing.points = standing_data.get('points', 0)
-                existing_standing.updated_at = datetime.now(timezone.utc)
-                stats['updated'] += 1
-            else:
-                # Create new
-                new_standing = BracketStanding(
-                    division_id=division_id,
-                    bracket_name=bracket_name,
-                    team_name=team_name,
-                    played=standing_data.get('played', 0),
-                    wins=standing_data.get('wins', 0),
-                    draws=standing_data.get('draws', 0),
-                    losses=standing_data.get('losses', 0),
-                    goals_for=standing_data.get('goals_for', 0),
-                    goals_against=standing_data.get('goals_against', 0),
-                    goal_difference=standing_data.get('goal_difference', 0),
-                    points=standing_data.get('points', 0),
-                )
-                self.db.add(new_standing)
-                standings_lookup[key] = new_standing
-                stats['created'] += 1
-            
-            batch_count += 1
-            
-            # Commit in batches
-            if batch_count >= BATCH_SIZE:
-                await self.db.commit()
-                batch_count = 0
         
         # Commit any remaining standings
         if batch_count > 0:
-            await self.db.commit()
+            try:
+                await self.db.commit()
+                logger.info(f"Committed final batch of {batch_count} standings")
+            except Exception as e:
+                logger.error(f"Error committing final batch: {e}")
+                await self.db.rollback()
+                stats['errors'] += batch_count
         
         standings_lookup.clear()
+        
+        logger.info(f"Bracket standings stored: {stats['created']} created, {stats['updated']} updated, {stats['skipped']} skipped, {stats['errors']} errors")
+
         standings_lookup = None
         
         logger.info(f"Processed {stats['total']} standings: {stats['created']} created, {stats['updated']} updated, {stats['skipped']} skipped")
