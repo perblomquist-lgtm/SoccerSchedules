@@ -280,88 +280,95 @@ async def get_division_seeding(
             detail=f"Database error fetching standings: {str(e)}"
         )
     
-    # Group standings by bracket and identify winners
-    brackets = {}
-    for standing in standings:
-        if standing.bracket_name not in brackets:
-            brackets[standing.bracket_name] = []
-        brackets[standing.bracket_name].append(standing)
-    
-    # Get bracket winners (first team in each bracket - already sorted)
-    bracket_winners = []
-    remaining_teams = []
-    
-    for bracket_name, bracket_teams in brackets.items():
-        if bracket_teams:
-            # First team is the winner
-            winner = bracket_teams[0]
-            bracket_winners.append({
-                'team': winner,
-                'bracket': bracket_name
-            })
-            # Rest are remaining teams
-            for team in bracket_teams[1:]:
-                remaining_teams.append({
-                    'team': team,
+    try:
+        # Group standings by bracket and identify winners
+        brackets = {}
+        for standing in standings:
+            if standing.bracket_name not in brackets:
+                brackets[standing.bracket_name] = []
+            brackets[standing.bracket_name].append(standing)
+        
+        # Get bracket winners (first team in each bracket - already sorted)
+        bracket_winners = []
+        remaining_teams = []
+        
+        for bracket_name, bracket_teams in brackets.items():
+            if bracket_teams:
+                # First team is the winner
+                winner = bracket_teams[0]
+                bracket_winners.append({
+                    'team': winner,
                     'bracket': bracket_name
                 })
-    
-    # Sort bracket winners by seeding criteria
-    def sort_key(item):
-        team = item['team']
-        return (
-            -team.points,  # Higher points first
-            -team.goal_difference,  # Higher GD first
-            -team.goals_for,  # Higher GF first
-            team.goals_against,  # Lower GA first
-            team.team_name  # Alphabetical as final tiebreaker
+                # Rest are remaining teams
+                for team in bracket_teams[1:]:
+                    remaining_teams.append({
+                        'team': team,
+                        'bracket': bracket_name
+                    })
+        
+        # Sort bracket winners by seeding criteria
+        def sort_key(item):
+            team = item['team']
+            return (
+                -team.points,  # Higher points first
+                -team.goal_difference,  # Higher GD first
+                -team.goals_for,  # Higher GF first
+                team.goals_against,  # Lower GA first
+                team.team_name  # Alphabetical as final tiebreaker
+            )
+        
+        bracket_winners.sort(key=sort_key)
+        remaining_teams.sort(key=sort_key)
+        
+        # Convert to response format
+        winner_responses = []
+        for rank, winner_data in enumerate(bracket_winners, start=1):
+            team = winner_data['team']
+            winner_responses.append(SeedingTeam(
+                rank=rank,
+                team_name=team.team_name,
+                bracket=winner_data['bracket'],
+                points=team.points,
+                goal_difference=team.goal_difference,
+                goals_for=team.goals_for,
+                goals_against=team.goals_against,
+                wins=team.wins,
+                draws=team.draws,
+                losses=team.losses,
+                played=team.played,
+                is_bracket_winner=True
+            ))
+        
+        # Take top 6 remaining teams
+        remaining_responses = []
+        start_rank = len(bracket_winners) + 1
+        for idx, remaining_data in enumerate(remaining_teams[:6], start=start_rank):
+            team = remaining_data['team']
+            remaining_responses.append(SeedingTeam(
+                rank=idx,
+                team_name=team.team_name,
+                bracket=remaining_data['bracket'],
+                points=team.points,
+                goal_difference=team.goal_difference,
+                goals_for=team.goals_for,
+                goals_against=team.goals_against,
+                wins=team.wins,
+                draws=team.draws,
+                losses=team.losses,
+                played=team.played,
+                is_bracket_winner=False
+            ))
+        
+        return SeedingResponse(
+            division_id=division_id,
+            division_name=division.name,
+            bracket_winners=winner_responses,
+            top_remaining=remaining_responses
         )
-    
-    bracket_winners.sort(key=sort_key)
-    remaining_teams.sort(key=sort_key)
-    
-    # Convert to response format
-    winner_responses = []
-    for rank, winner_data in enumerate(bracket_winners, start=1):
-        team = winner_data['team']
-        winner_responses.append(SeedingTeam(
-            rank=rank,
-            team_name=team.team_name,
-            bracket=winner_data['bracket'],
-            points=team.points,
-            goal_difference=team.goal_difference,
-            goals_for=team.goals_for,
-            goals_against=team.goals_against,
-            wins=team.wins,
-            draws=team.draws,
-            losses=team.losses,
-            played=team.played,
-            is_bracket_winner=True
-        ))
-    
-    # Take top 6 remaining teams
-    remaining_responses = []
-    start_rank = len(bracket_winners) + 1
-    for idx, remaining_data in enumerate(remaining_teams[:6], start=start_rank):
-        team = remaining_data['team']
-        remaining_responses.append(SeedingTeam(
-            rank=idx,
-            team_name=team.team_name,
-            bracket=remaining_data['bracket'],
-            points=team.points,
-            goal_difference=team.goal_difference,
-            goals_for=team.goals_for,
-            goals_against=team.goals_against,
-            wins=team.wins,
-            draws=team.draws,
-            losses=team.losses,
-            played=team.played,
-            is_bracket_winner=False
-        ))
-    
-    return SeedingResponse(
-        division_id=division_id,
-        division_name=division.name,
-        bracket_winners=winner_responses,
-        top_remaining=remaining_responses
-    )
+    except Exception as e:
+        logger.error(f"Error processing seeding data for division {division_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing seeding: {str(e)}"
+        )
