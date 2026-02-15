@@ -34,6 +34,10 @@ echo "🚢 Deploying backend..."
 cd /Users/Per/code/Soccerschedules
 fly deploy --config fly.toml --app soccerschedules-backend
 
+# Run database migrations
+echo "🗄️  Running database migrations..."
+fly ssh console -a soccerschedules-backend --command "alembic upgrade head"
+
 # Get backend URL
 BACKEND_URL=$(fly status --app soccerschedules-backend --json | grep -o '"Hostname":"[^"]*"' | cut -d'"' -f4)
 echo "✅ Backend deployed at: https://$BACKEND_URL"

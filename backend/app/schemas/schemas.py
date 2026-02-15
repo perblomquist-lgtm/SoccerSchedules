@@ -198,6 +198,59 @@ class ScrapeLogResponse(ScrapeLogBase):
 
 
 # ============================================================================
+# Bracket Standings Schemas
+# ============================================================================
+
+class BracketStandingBase(BaseModel):
+    """Base bracket standing schema"""
+    bracket_name: str = Field(..., description="Bracket name (e.g., 'Bracket A')")
+    team_name: str = Field(..., description="Team name")
+    played: int = Field(default=0, description="Games played")
+    wins: int = Field(default=0, description="Wins")
+    draws: int = Field(default=0, description="Draws")
+    losses: int = Field(default=0, description="Losses")
+    goals_for: int = Field(default=0, description="Goals scored")
+    goals_against: int = Field(default=0, description="Goals conceded")
+    goal_difference: int = Field(default=0, description="Goal difference")
+    points: int = Field(default=0, description="Points")
+
+
+class BracketStandingResponse(BracketStandingBase):
+    """Schema for bracket standing response"""
+    id: int
+    division_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SeedingTeam(BaseModel):
+    """Team in seeding list"""
+    team_name: str
+    bracket_name: str
+    points: int
+    goal_difference: int
+    goals_for: int
+    goals_against: int
+    played: int
+    wins: int
+    draws: int
+    losses: int
+    rank: int
+    is_bracket_winner: bool
+
+
+class SeedingResponse(BaseModel):
+    """Response schema for seeding calculation"""
+    division_id: int
+    division_name: str
+    bracket_winners: List[SeedingTeam]
+    top_remaining: List[SeedingTeam]
+
+
+# ============================================================================
 # Scraping Operation Schemas
 # ============================================================================
 

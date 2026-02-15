@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.models import Event, Division, Team, Game, ScrapeLog, ScrapeStatus, GameStatus
+from app.models.models import Event, Division, Team, Game, ScrapeLog, ScrapeStatus, GameStatus, BracketStanding
 from app.scraper.gotsport import GotsportScraper
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,11 @@ class ScrapeService:
                 
                 # Store schedules/games
                 stats = await self._store_games(event, divisions_map, scraped_data.get('schedules', []))
+                
+                # Store bracket standings
+                bracket_stats = await self._store_bracket_standings(event, divisions_map, scraped_data.get('bracket_standings', []))
+                if bracket_stats['total'] > 0:
+                    logger.info(f"Stored {bracket_stats['created']} bracket standings, updated {bracket_stats['updated']}")
                 
                 # Clean up any duplicates that might have been created
                 duplicates_removed = await self._cleanup_duplicate_games(event)
@@ -352,6 +357,102 @@ class ScrapeService:
         if game_data.get('status'):
             game.status = game_data['status']
         game.updated_at = datetime.now(timezone.utc)
+    
+    async def _store_bracket_standings(self, event: Event, divisions_map: Dict[str, int], standings_data: List[Dict]) -> Dict:
+        """Store or update bracket standings in the database"""
+        stats = {'total': 0, 'created': 0, 'updated': 0, 'skipped': 0}
+        
+        if not standings_data:
+            return stats
+        
+        BATCH_SIZE = 50  # Smaller batch for standings
+        
+        logger.info(f"Processing {len(standings_data)} bracket standings")
+        
+        # Load existing standings for this event
+        standings_lookup = {}
+        for division_id in divisions_map.values():
+            result = await self.db.execute(
+                select(BracketStanding).where(BracketStanding.division_id == division_id)
+            )
+            for standing in result.scalars():
+                key = (standing.division_id, standing.bracket_name, standing.team_name)
+                standings_lookup[key] = standing
+        
+        batch_count = 0
+        for standing_data in standings_data:
+            stats['total'] += 1
+            
+            # Get division name and look up division_id
+            division_name = standing_data.get('division_name')
+            if not division_name:
+                stats['skipped'] += 1
+                continue
+            
+            division_id = divisions_map.get(division_name)
+            if not division_id:
+                stats['skipped'] += 1
+                logger.warning(f"Division not found for standing: {division_name}")
+                continue
+            
+            bracket_name = standing_data.get('bracket_name', 'Unknown Bracket')
+            team_name = standing_data.get('team_name')
+            
+            if not team_name:
+                stats['skipped'] += 1
+                continue
+            
+            # Check if this standing already exists
+            key = (division_id, bracket_name, team_name)
+            existing_standing = standings_lookup.get(key)
+            
+            if existing_standing:
+                # Update existing
+                existing_standing.played = standing_data.get('played', 0)
+                existing_standing.wins = standing_data.get('wins', 0)
+                existing_standing.draws = standing_data.get('draws', 0)
+                existing_standing.losses = standing_data.get('losses', 0)
+                existing_standing.goals_for = standing_data.get('goals_for', 0)
+                existing_standing.goals_against = standing_data.get('goals_against', 0)
+                existing_standing.goal_difference = standing_data.get('goal_difference', 0)
+                existing_standing.points = standing_data.get('points', 0)
+                existing_standing.updated_at = datetime.now(timezone.utc)
+                stats['updated'] += 1
+            else:
+                # Create new
+                new_standing = BracketStanding(
+                    division_id=division_id,
+                    bracket_name=bracket_name,
+                    team_name=team_name,
+                    played=standing_data.get('played', 0),
+                    wins=standing_data.get('wins', 0),
+                    draws=standing_data.get('draws', 0),
+                    losses=standing_data.get('losses', 0),
+                    goals_for=standing_data.get('goals_for', 0),
+                    goals_against=standing_data.get('goals_against', 0),
+                    goal_difference=standing_data.get('goal_difference', 0),
+                    points=standing_data.get('points', 0),
+                )
+                self.db.add(new_standing)
+                standings_lookup[key] = new_standing
+                stats['created'] += 1
+            
+            batch_count += 1
+            
+            # Commit in batches
+            if batch_count >= BATCH_SIZE:
+                await self.db.commit()
+                batch_count = 0
+        
+        # Commit any remaining standings
+        if batch_count > 0:
+            await self.db.commit()
+        
+        standings_lookup.clear()
+        standings_lookup = None
+        
+        logger.info(f"Processed {stats['total']} standings: {stats['created']} created, {stats['updated']} updated, {stats['skipped']} skipped")
+        return stats
     
     async def _update_event_dates_from_games(self, event: Event):
         """Update event start_date and end_date based on the earliest and latest game dates"""

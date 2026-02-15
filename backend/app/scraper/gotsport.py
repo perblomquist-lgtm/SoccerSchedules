@@ -293,6 +293,7 @@ class GotsportScraper:
             
             # Now scrape each division's schedule page
             all_schedules = []
+            all_bracket_standings = []
             for division in divisions_data:
                 if division.get('schedule_url'):
                     print(f"[SCRAPER] Scraping schedule for division: {division['name']}")
@@ -300,10 +301,15 @@ class GotsportScraper:
                         schedule_games = await self._scrape_division_schedule(page, division['schedule_url'], division)
                         print(f"[SCRAPER] Found {len(schedule_games)} games in {division['name']}")
                         all_schedules.extend(schedule_games)
+                        
+                        # Also scrape bracket standings from the same page
+                        bracket_standings = await self._scrape_bracket_standings(page, division['schedule_url'], division)
+                        if bracket_standings:
+                            print(f"[SCRAPER] Found {len(bracket_standings)} bracket standings in {division['name']}")
+                            all_bracket_standings.extend(bracket_standings)
                     except Exception as e:
                         print(f"[SCRAPER] Error scraping division {division['name']}: {e}")
                         logger.warning(f"Error scraping division {division['name']}: {e}")
-            
             event_data = {
                 'event_id': event_id,
                 'event': {
@@ -315,6 +321,7 @@ class GotsportScraper:
                 },
                 'divisions': divisions_data,
                 'schedules': all_schedules,
+                'bracket_standings': all_bracket_standings,
             }
             
             logger.info(f"Scrape successful: {len(all_schedules)} games found")
@@ -903,6 +910,115 @@ class GotsportScraper:
             raise
         
         return games
+    
+    async def _scrape_bracket_standings(self, page: Page, schedule_url: str, division: Dict) -> List[Dict[str, Any]]:
+        """
+        Scrape bracket standings from a division page.
+        Looks for standings tables with columns like: Team, MP, W, D, L, GF, GA, GD, PTS
+        """
+        standings = []
+        
+        try:
+            # Get the HTML content
+            html_content = await page.content()
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find all tables
+            tables = soup.find_all('table')
+            
+            for table in tables:
+                headers = [th.get_text(strip=True).lower() for th in table.find_all('th')]
+                
+                # Only process standings tables (they have mp/w/l/d/pts columns)
+                if not any(keyword in ' '.join(headers) for keyword in ['pts', 'points', 'mp', 'gp']):
+                    continue
+                
+                # Skip schedule tables
+                if any(keyword in ' '.join(headers) for keyword in ['match #', 'game #', 'time', 'location']):
+                    continue
+                
+                print(f"[SCRAPER] Found standings table with headers: {headers}")
+                
+                # Try to find the bracket name (look for heading above the table)
+                bracket_name = "Unknown Bracket"
+                parent = table.find_parent()
+                if parent:
+                    # Look for a heading before the table
+                    for sibling in parent.find_all_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'strong']):
+                        text = sibling.get_text(strip=True)
+                        if 'bracket' in text.lower() or 'group' in text.lower() or 'pool' in text.lower():
+                            bracket_name = text
+                            break
+                
+                print(f"[SCRAPER] Bracket name: {bracket_name}")
+                
+                # Map column names to indices
+                col_map = {}
+                for idx, header in enumerate(headers):
+                    header = header.lower()
+                    if 'team' in header or 'club' in header:
+                        col_map['team'] = idx
+                    elif header in ['mp', 'gp', 'p', 'played', 'games']:
+                        col_map['played'] = idx
+                    elif header in ['w', 'win', 'wins']:
+                        col_map['wins'] = idx
+                    elif header in ['d', 'draw', 'draws', 't', 'tie', 'ties']:
+                        col_map['draws'] = idx
+                    elif header in ['l', 'loss', 'losses']:
+                        col_map['losses'] = idx
+                    elif header in ['gf', 'f', 'gs', 'goals for', 'scored']:
+                        col_map['gf'] = idx
+                    elif header in ['ga', 'a', 'gc', 'goals against', 'conceded']:
+                        col_map['ga'] = idx
+                    elif header in ['gd', '+/-', 'diff', 'goal difference']:
+                        col_map['gd'] = idx
+                    elif header in ['pts', 'pt', 'points']:
+                        col_map['pts'] = idx
+                
+                if 'team' not in col_map or 'pts' not in col_map:
+                    print(f"[SCRAPER] Skipping table - missing required columns (team or pts)")
+                    continue
+                
+                # Process table rows
+                rows = table.find_all('tr')[1:]  # Skip header
+                print(f"[SCRAPER] Table has {len(rows)} data rows")
+                
+                for row_idx, row in enumerate(rows):
+                    cells = row.find_all(['td', 'th'])
+                    if len(cells) < len(headers):
+                        continue
+                    
+                    cell_texts = [cell.get_text(strip=True) for cell in cells]
+                    
+                    try:
+                        standing_data = {
+                            'division_name': division['name'],
+                            'gotsport_division_id': division.get('gotsport_division_id'),
+                            'bracket_name': bracket_name,
+                            'team_name': cell_texts[col_map['team']],
+                            'played': int(cell_texts[col_map.get('played', 0)]) if col_map.get('played') and cell_texts[col_map.get('played', 0)].isdigit() else 0,
+                            'wins': int(cell_texts[col_map.get('wins', 0)]) if col_map.get('wins') and cell_texts[col_map.get('wins', 0)].isdigit() else 0,
+                            'draws': int(cell_texts[col_map.get('draws', 0)]) if col_map.get('draws') and cell_texts[col_map.get('draws', 0)].isdigit() else 0,
+                            'losses': int(cell_texts[col_map.get('losses', 0)]) if col_map.get('losses') and cell_texts[col_map.get('losses', 0)].isdigit() else 0,
+                            'goals_for': int(cell_texts[col_map.get('gf', 0)]) if col_map.get('gf') and cell_texts[col_map.get('gf', 0)].isdigit() else 0,
+                            'goals_against': int(cell_texts[col_map.get('ga', 0)]) if col_map.get('ga') and cell_texts[col_map.get('ga', 0)].isdigit() else 0,
+                            'goal_difference': int(cell_texts[col_map.get('gd', 0)]) if col_map.get('gd') and cell_texts[col_map.get('gd', 0)].replace('-', '').isdigit() else 0,
+                            'points': int(cell_texts[col_map['pts']]) if cell_texts[col_map['pts']].isdigit() else 0,
+                        }
+                        
+                        if standing_data['team_name']:
+                            standings.append(standing_data)
+                            if row_idx < 2:  # Debug
+                                print(f"[SCRAPER] Standing added: {standing_data['team_name']} - {standing_data['points']} pts")
+                    
+                    except Exception as e:
+                        print(f"[SCRAPER] Error parsing standing row: {e}")
+                        logger.warning(f"Error parsing standing row: {e}")
+        
+        except Exception as e:
+            logger.warning(f"Error scraping bracket standings from {schedule_url}: {e}")
+        
+        return standings
     
     def _parse_date(self, date_str: Optional[str]) -> Optional[datetime]:
         """Parse date string to datetime object"""

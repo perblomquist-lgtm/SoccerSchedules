@@ -80,6 +80,9 @@ class Division(Base):
     games: Mapped[list["Game"]] = relationship(
         "Game", back_populates="division", cascade="all, delete-orphan"
     )
+    bracket_standings: Mapped[list["BracketStanding"]] = relationship(
+        "BracketStanding", back_populates="division", cascade="all, delete-orphan"
+    )
 
 
 class Team(Base):
@@ -177,6 +180,43 @@ class Game(Base):
               'division_id', 'home_team_name', 'away_team_name', 'game_date', 'game_time'),
         Index('ix_games_datetime', 'game_date', 'game_time'),
         Index('ix_games_field_date', 'field_name', 'game_date'),
+    )
+
+
+class BracketStanding(Base):
+    """Bracket standings within a division"""
+    __tablename__ = "bracket_standings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    division_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("divisions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    bracket_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    team_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    # Standings data
+    played: Mapped[int] = mapped_column(Integer, default=0)
+    wins: Mapped[int] = mapped_column(Integer, default=0)
+    draws: Mapped[int] = mapped_column(Integer, default=0)
+    losses: Mapped[int] = mapped_column(Integer, default=0)
+    goals_for: Mapped[int] = mapped_column(Integer, default=0)
+    goals_against: Mapped[int] = mapped_column(Integer, default=0)
+    goal_difference: Mapped[int] = mapped_column(Integer, default=0)
+    points: Mapped[int] = mapped_column(Integer, default=0)
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Relationships
+    division: Mapped["Division"] = relationship("Division", back_populates="bracket_standings")
+    
+    # Unique constraint for team in bracket
+    __table_args__ = (
+        Index('ix_bracket_division_bracket_team', 'division_id', 'bracket_name', 'team_name', unique=True),
     )
 
 
