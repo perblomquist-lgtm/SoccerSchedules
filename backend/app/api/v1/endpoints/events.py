@@ -343,10 +343,10 @@ async def get_division_seeding(
         # Take top 6 remaining teams
         remaining_responses = []
         start_rank = len(bracket_winners) + 1
-        for idx, remaining_data in enumerate(remaining_teams[:6], start=start_rank):
+        for idx, remaining_data in enumerate(remaining_teams[:6]):
             team = remaining_data['team']
             remaining_responses.append(SeedingTeam(
-                rank=idx,
+                rank=start_rank + idx,
                 team_name=team.team_name,
                 bracket_name=remaining_data['bracket'],
                 points=team.points,

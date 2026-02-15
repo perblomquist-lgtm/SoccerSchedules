@@ -174,7 +174,7 @@ export default function SeedingPage({ params }: { params: Promise<{ id: string }
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                            {team.bracket}
+                            {team.bracket_name}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-gray-900">{team.points}</td>
@@ -233,7 +233,7 @@ export default function SeedingPage({ params }: { params: Promise<{ id: string }
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                              {team.bracket}
+                              {team.bracket_name}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-gray-900">{team.points}</td>
