@@ -919,8 +919,13 @@ class GotsportScraper:
         standings = []
         
         try:
-            # Get the HTML content
-            html_content = await page.content()
+            # Use HTTP request for consistency and speed (same as _scrape_division_schedule)
+            print(f"[SCRAPER] Fetching bracket standings from: {schedule_url}")
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(schedule_url)
+                response.raise_for_status()
+                html_content = response.text
+            
             soup = BeautifulSoup(html_content, 'html.parser')
             
             # Find all tables
