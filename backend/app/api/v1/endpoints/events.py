@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.models.models import Event, Division, Game
-from app.schemas.schemas import EventResponse, EventCreate, EventUpdate, EventWithStats
+from app.models.models import Event, Division, Game, BracketStanding
+from app.schemas.schemas import EventResponse, EventCreate, EventUpdate, EventWithStats, SeedingResponse, SeedingTeam
 from app.services.scrape_service import ScrapeService
 from app.scheduler import get_scheduler
 
@@ -193,3 +193,146 @@ async def delete_event(
     await db.commit()
     
     return None
+
+
+@router.get("/{event_id}/divisions/{division_id}/seeding", response_model=SeedingResponse)
+async def get_division_seeding(
+    event_id: int,
+    division_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Calculate and return seeding for a division based on bracket standings
+    
+    Seeding calculation:
+    1. Identify bracket winners (highest points in each bracket)
+    2. Sort bracket winners by: PTS (desc), GD (desc), GF (desc), GA (asc)
+    3. Get remaining teams (non-winners) and sort the same way
+    4. Return bracket winners + top 6 remaining teams
+    """
+    # Verify event exists
+    result = await db.execute(
+        select(Event).where(Event.id == event_id)
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Event {event_id} not found"
+        )
+    
+    # Verify division exists and belongs to event
+    result = await db.execute(
+        select(Division).where(Division.id == division_id, Division.event_id == event_id)
+    )
+    division = result.scalar_one_or_none()
+    if not division:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Division {division_id} not found in event {event_id}"
+        )
+    
+    # Get all bracket standings for this division
+    result = await db.execute(
+        select(BracketStanding)
+        .where(BracketStanding.division_id == division_id)
+        .order_by(
+            BracketStanding.bracket_name,
+            BracketStanding.points.desc(),
+            BracketStanding.goal_difference.desc(),
+            BracketStanding.goals_for.desc(),
+            BracketStanding.goals_against.asc()
+        )
+    )
+    standings = result.scalars().all()
+    
+    if not standings:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No bracket standings found for division {division_id}"
+        )
+    
+    # Group standings by bracket and identify winners
+    brackets = {}
+    for standing in standings:
+        if standing.bracket_name not in brackets:
+            brackets[standing.bracket_name] = []
+        brackets[standing.bracket_name].append(standing)
+    
+    # Get bracket winners (first team in each bracket - already sorted)
+    bracket_winners = []
+    remaining_teams = []
+    
+    for bracket_name, bracket_teams in brackets.items():
+        if bracket_teams:
+            # First team is the winner
+            winner = bracket_teams[0]
+            bracket_winners.append({
+                'team': winner,
+                'bracket': bracket_name
+            })
+            # Rest are remaining teams
+            for team in bracket_teams[1:]:
+                remaining_teams.append({
+                    'team': team,
+                    'bracket': bracket_name
+                })
+    
+    # Sort bracket winners by seeding criteria
+    def sort_key(item):
+        team = item['team']
+        return (
+            -team.points,  # Higher points first
+            -team.goal_difference,  # Higher GD first
+            -team.goals_for,  # Higher GF first
+            team.goals_against,  # Lower GA first
+            team.team_name  # Alphabetical as final tiebreaker
+        )
+    
+    bracket_winners.sort(key=sort_key)
+    remaining_teams.sort(key=sort_key)
+    
+    # Convert to response format
+    winner_responses = []
+    for rank, winner_data in enumerate(bracket_winners, start=1):
+        team = winner_data['team']
+        winner_responses.append(SeedingTeam(
+            rank=rank,
+            team_name=team.team_name,
+            bracket=winner_data['bracket'],
+            points=team.points,
+            goal_difference=team.goal_difference,
+            goals_for=team.goals_for,
+            goals_against=team.goals_against,
+            wins=team.wins,
+            draws=team.draws,
+            losses=team.losses,
+            played=team.played,
+            is_bracket_winner=True
+        ))
+    
+    # Take top 6 remaining teams
+    remaining_responses = []
+    start_rank = len(bracket_winners) + 1
+    for idx, remaining_data in enumerate(remaining_teams[:6], start=start_rank):
+        team = remaining_data['team']
+        remaining_responses.append(SeedingTeam(
+            rank=idx,
+            team_name=team.team_name,
+            bracket=remaining_data['bracket'],
+            points=team.points,
+            goal_difference=team.goal_difference,
+            goals_for=team.goals_for,
+            goals_against=team.goals_against,
+            wins=team.wins,
+            draws=team.draws,
+            losses=team.losses,
+            played=team.played,
+            is_bracket_winner=False
+        ))
+    
+    return SeedingResponse(
+        division_id=division_id,
+        division_name=division.name,
+        bracket_winners=winner_responses,
+        top_remaining=remaining_responses
+    )
