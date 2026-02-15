@@ -1,5 +1,6 @@
 """Events API endpoints"""
 import asyncio
+import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func
@@ -13,6 +14,7 @@ from app.services.scrape_service import ScrapeService
 from app.scheduler import get_scheduler
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/", response_model=List[EventWithStats])
@@ -209,46 +211,73 @@ async def get_division_seeding(
     3. Get remaining teams (non-winners) and sort the same way
     4. Return bracket winners + top 6 remaining teams
     """
-    # Verify event exists
-    result = await db.execute(
-        select(Event).where(Event.id == event_id)
-    )
-    event = result.scalar_one_or_none()
-    if not event:
+    try:
+        # Verify event exists
+        result = await db.execute(
+            select(Event).where(Event.id == event_id)
+        )
+        event = result.scalar_one_or_none()
+        if not event:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Event {event_id} not found"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching event {event_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Event {event_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
         )
     
-    # Verify division exists and belongs to event
-    result = await db.execute(
-        select(Division).where(Division.id == division_id, Division.event_id == event_id)
-    )
-    division = result.scalar_one_or_none()
-    if not division:
+    try:
+        # Verify division exists and belongs to event
+        result = await db.execute(
+            select(Division).where(Division.id == division_id, Division.event_id == event_id)
+        )
+        division = result.scalar_one_or_none()
+        if not division:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Division {division_id} not found in event {event_id}"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching division {division_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Division {division_id} not found in event {event_id}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
         )
     
-    # Get all bracket standings for this division
-    result = await db.execute(
-        select(BracketStanding)
-        .where(BracketStanding.division_id == division_id)
-        .order_by(
-            BracketStanding.bracket_name,
-            BracketStanding.points.desc(),
-            BracketStanding.goal_difference.desc(),
-            BracketStanding.goals_for.desc(),
-            BracketStanding.goals_against.asc()
+    try:
+        # Get all bracket standings for this division
+        result = await db.execute(
+            select(BracketStanding)
+            .where(BracketStanding.division_id == division_id)
+            .order_by(
+                BracketStanding.bracket_name,
+                BracketStanding.points.desc(),
+                BracketStanding.goal_difference.desc(),
+                BracketStanding.goals_for.desc(),
+                BracketStanding.goals_against.asc()
+            )
         )
-    )
-    standings = result.scalars().all()
-    
-    if not standings:
+        standings = result.scalars().all()
+        
+        if not standings:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No bracket standings found for division {division_id}"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching bracket standings for division {division_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No bracket standings found for division {division_id}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error fetching standings: {str(e)}"
         )
     
     # Group standings by bracket and identify winners
