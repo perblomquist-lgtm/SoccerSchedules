@@ -8,7 +8,7 @@ import axios from 'axios';
 interface SeedingTeam {
   rank: number;
   team_name: string;
-  bracket: string;
+  bracket_name: string;
   points: number;
   goal_difference: number;
   goals_for: number;
