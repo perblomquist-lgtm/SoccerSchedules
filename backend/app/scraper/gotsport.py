@@ -930,6 +930,7 @@ class GotsportScraper:
             
             # Find all tables
             tables = soup.find_all('table')
+            unknown_bracket_index = 0
             
             for table in tables:
                 headers = [th.get_text(strip=True).lower() for th in table.find_all('th')]
@@ -963,16 +964,50 @@ class GotsportScraper:
                             if link:
                                 bracket_name = link.get_text(strip=True)
                 
+                # Fallback: Look for a panel heading/title in the closest panel
+                if bracket_name == "Unknown Bracket":
+                    panel = table.find_parent(class_='panel')
+                    if panel:
+                        panel_heading = panel.find(class_='panel-heading')
+                        if panel_heading:
+                            link = panel_heading.find('a')
+                            if link and link.get_text(strip=True):
+                                bracket_name = link.get_text(strip=True)
+                            else:
+                                heading_text = panel_heading.get_text(strip=True)
+                                if heading_text:
+                                    bracket_name = heading_text
+
+                # Fallback: table caption text
+                if bracket_name == "Unknown Bracket":
+                    caption = table.find('caption')
+                    if caption:
+                        caption_text = caption.get_text(strip=True)
+                        if caption_text:
+                            bracket_name = caption_text
+
                 # Fallback: Look for headings
                 if bracket_name == "Unknown Bracket":
                     parent = table.find_parent()
                     if parent:
                         # Look for a heading before the table
-                        for sibling in parent.find_all_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'strong']):
+                        for sibling in parent.find_all_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'strong', 'div']):
                             text = sibling.get_text(strip=True)
+                            if not text:
+                                continue
+                            if sibling.name == 'div':
+                                class_list = sibling.get('class') or []
+                                if 'panel-title' in class_list or 'panel-heading' in class_list:
+                                    bracket_name = text
+                                    break
                             if 'bracket' in text.lower() or 'group' in text.lower() or 'pool' in text.lower():
                                 bracket_name = text
                                 break
+
+                # Final fallback: avoid returning "Unknown Bracket" labels
+                if bracket_name == "Unknown Bracket":
+                    unknown_bracket_index += 1
+                    bracket_name = f"Bracket {unknown_bracket_index}"
                 
                 print(f"[SCRAPER] Bracket name: {bracket_name}")
                 
