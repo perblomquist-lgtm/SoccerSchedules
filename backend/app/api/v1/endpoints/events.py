@@ -300,6 +300,13 @@ async def get_division_seeding(
         
         # Use deduplicated standings
         deduplicated_standings = list(team_standings.values())
+
+        # If we have any real bracket names, drop Unknown entries to avoid
+        # showing phantom brackets in seeding.
+        if any(s.bracket_name != "Unknown Bracket" for s in deduplicated_standings):
+            deduplicated_standings = [
+                s for s in deduplicated_standings if s.bracket_name != "Unknown Bracket"
+            ]
         
         # Group standings by bracket and identify winners
         brackets = {}
