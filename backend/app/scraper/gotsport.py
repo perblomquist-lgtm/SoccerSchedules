@@ -978,6 +978,19 @@ class GotsportScraper:
                                 if heading_text:
                                     bracket_name = heading_text
 
+                # Fallback: find the closest previous bracket heading element
+                if bracket_name == "Unknown Bracket":
+                    prev_heading = table.find_previous(
+                        lambda tag: tag.name in ['div', 'a']
+                        and ((tag.get('id') or '').startswith('bracket-')
+                             or 'panel-heading' in (tag.get('class') or []))
+                    )
+                    if prev_heading:
+                        link = prev_heading.find('a') if prev_heading.name == 'div' else prev_heading
+                        heading_text = link.get_text(strip=True) if link else ''
+                        if heading_text:
+                            bracket_name = heading_text
+
                 # Fallback: table caption text
                 if bracket_name == "Unknown Bracket":
                     caption = table.find('caption')
