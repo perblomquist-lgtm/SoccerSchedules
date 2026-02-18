@@ -6,8 +6,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
-    wget \
-    sudo \
     # Playwright/Chromium dependencies
     libnss3 \
     libnspr4 \
@@ -41,9 +39,6 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Install Playwright chromium browser (as appuser)
 RUN /home/appuser/.local/bin/playwright install chromium
-
-# Switch back to non-root user (already appuser, but explicit)
-USER appuser
 
 # Copy application code
 COPY --chown=appuser:appuser backend/app ./app
